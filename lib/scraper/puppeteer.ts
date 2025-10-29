@@ -26,11 +26,11 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
     await page.goto(TARGET_URL);
 
     // Espera clave: asegurar carga del contenido dinámico
-    await page.waitForSelector('div[class*="ListadoResultados"]');
+    await page.waitForSelector('div[class^="sc-eteQWc"]');
 
     console.log("Página cargada y contenido dinámico detectado.");
 
-    const selectorTarjeta = "article";
+    const selectorTarjeta = 'div[class^="sc-eteQWc"]';
     const items: LicitacionExtraida[] = await page.$$eval(selectorTarjeta, (cards) => {
       const parseNumber = (text: string | null) => {
         if (!text) return null;
@@ -42,54 +42,39 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
         const getText = (sel: string) =>
           (card.querySelector(sel)?.textContent || "").trim() || null;
 
-        const codigo =
-          getText("[data-codigo]") ||
-          getText(".codigo") ||
-          getText(".id") ||
-          null;
-
         const titulo =
-          getText("h2") ||
-          getText("h3") ||
-          getText(".titulo") ||
-          getText(".title") ||
-          null;
+          card.querySelector('h4[title]')?.textContent?.trim() || null;
 
-        const organismo =
-          getText(".organismo") ||
-          getText(".buyer") ||
-          getText(".entidad") ||
-          null;
+        const codigo = getText('span[class*="dvJGcM"]');
 
-        const montoText =
-          getText(".monto") ||
-          getText(".amount") ||
-          getText("[data-monto]") ||
-          getText(".price") ||
-          null;
+        const organismo = getText('p[class*="OrPQk"]');
 
-        const fecha_publicacion =
-          getText(".fecha-publicacion") ||
-          getText("[data-fecha-publicacion]") ||
-          null;
+        const montoText = getText('div[class*="kszCox"] h3');
 
-        const fecha_cierre =
-          getText(".fecha-cierre") ||
-          getText("[data-fecha-cierre]") ||
-          null;
+        const fechaCierreText = getText('div[class*="iztDaw"] h3');
 
-        const anchor = card.querySelector('a[href*="mercadopublico"]') as HTMLAnchorElement | null;
-        const url_ficha = anchor ? anchor.href : null;
+        const fechaPublicacionText = getText('div[class*="cqVaPv"] h3');
+
+        let urlFicha: string | null = null;
+        const anchor = card.querySelector('a[class^="sc-dsPRyZ"]') as HTMLAnchorElement | null;
+
+        if (anchor && (anchor as HTMLAnchorElement).href) {
+          urlFicha = (anchor as HTMLAnchorElement).href;
+        } else if (codigo) {
+          const codigoLimpio = codigo.replace(/\s/g, "");
+          urlFicha = `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${codigoLimpio}`;
+        }
 
         return {
           codigo: codigo ?? undefined,
           titulo: titulo ?? undefined,
           organismo: organismo ?? undefined,
           monto_clp: parseNumber(montoText) ?? undefined,
-          fecha_publicacion: fecha_publicacion ?? undefined,
-          fecha_cierre: fecha_cierre ?? undefined,
-          url_ficha: url_ficha ?? undefined,
+          fecha_publicacion: fechaPublicacionText ?? undefined,
+          fecha_cierre: fechaCierreText ?? undefined,
+          url_ficha: urlFicha ?? undefined,
           es_compra_agil: true,
+          json_raw: { raw: (card as HTMLElement).innerHTML }, // Guardamos el HTML para depuración
         };
       });
     });
