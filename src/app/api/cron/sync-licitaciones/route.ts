@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 import { scrapeCompraAgil } from "../../../../../lib/scraper/puppeteer";
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
+  // REMOVED: lectura de header Authorization
+  // const authHeader = request.headers.get("authorization");
+  // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // }
 
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Nueva lógica: leer 'secret' desde query params
+  const { searchParams } = new URL(request.url);
+  const secret = searchParams.get("secret");
+
+  if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
