@@ -1,4 +1,4 @@
-import puppeteer, { type Browser } from "puppeteer-core";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import type { Database } from "../supabase/database.types";
 
@@ -12,6 +12,7 @@ type LicitacionExtraida = Partial<Database["public"]["Tables"]["licitaciones"]["
  */
 export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
   let browser: Browser | null = null;
+  let page: Page | null = null;
 
   try {
     const executablePath = await chromium.executablePath();
@@ -22,16 +23,16 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
       headless: true,
     });
 
-    const page = await browser.newPage();
-    await page.goto(TARGET_URL);
+    page = await browser.newPage();
+    await page!.goto(TARGET_URL);
 
     // Espera clave: asegurar carga del contenido dinámico
-    await page.waitForSelector('div[class^="sc-eteQWc"]');
+    await page!.waitForSelector('div[class^="sc-eteQWc"]');
 
     console.log("Página cargada y contenido dinámico detectado.");
 
     const selectorTarjeta = 'div[class^="sc-eteQWc"]';
-    const items: LicitacionExtraida[] = await page.$$eval(selectorTarjeta, (cards) => {
+    const items: LicitacionExtraida[] = await page!.$$eval(selectorTarjeta, (cards) => {
       const parseNumber = (text: string | null) => {
         if (!text) return null;
         const onlyDigits = text.replace(/[^\d]/g, "");
@@ -74,13 +75,24 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
           fecha_cierre: fechaCierreText ?? undefined,
           url_ficha: urlFicha ?? undefined,
           es_compra_agil: true,
-          json_raw: { raw: (card as HTMLElement).innerHTML }, // Guardamos el HTML para depuración
+          json_raw: { raw: (card as HTMLElement).innerHTML },
         };
       });
     });
 
     return items;
   } catch (error) {
+    if (page) {
+      console.error("--- INICIO HTML DE PÁGINA EN ERROR ---");
+      try {
+        const pageHtml = await page.content();
+        console.error(pageHtml);
+      } catch (e) {
+        console.error("No se pudo obtener el HTML de la página.");
+      }
+      console.error("--- FIN HTML DE PÁGINA EN ERROR ---");
+    }
+
     console.error("Error durante el scraping:", error);
     throw new Error("Falló el scraping de Compra Ágil");
   } finally {
