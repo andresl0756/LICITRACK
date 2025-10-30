@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V18] EJECUTANDO SCRAPER V5 (New Page + Cookies) ---');
+  console.log('--- [CANARY V19] EJECUTANDO SCRAPER V5 (New Page + Cookies) ---');
   let browser: Browser | null = null;
 
   try {
@@ -111,7 +111,19 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
         enrichedItems.push({ ...item, ...detalles });
       } catch (e: any) {
-        console.warn(`--- [CANARY V18] Falló detalle ${item.codigo}: ${e.message}. Omitiendo.`);
+        console.error(`--- [CANARY V19] ERROR EN DETALLE PARA ${item.codigo} ---`);
+        console.error(`--- ERROR: ${e.message} ---`);
+
+        if (detailPage) {
+          console.error('--- HTML DE LA PÁGINA DE ERROR (DETALLE) ---');
+          try {
+            const pageHtml = await detailPage.content();
+            console.error(pageHtml);
+          } catch (htmlError: any) {
+            console.error(`No se pudo obtener el HTML de la página: ${htmlError.message}`);
+          }
+          console.error('--- FIN DEL HTML DE ERROR (DETALLE) ---');
+        }
         enrichedItems.push(item); // Guardar solo los datos de la lista
       } finally {
         if (detailPage) {
