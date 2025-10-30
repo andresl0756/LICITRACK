@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+// Importamos la V3 del scraper
 import { runHybridScraper } from '../../../../../lib/api/scraper-v3';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
@@ -12,28 +13,29 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Extraer datos (ahora el scraper devuelve un array enriquecido)
-    const enrichedItems = (await runHybridScraper(1)) as Array<Record<string, any>>; // Página 1 por ahora
+    // 2. Extraer datos (¡ahora usando el scraper v3!)
+    // La respuesta (enrichedItems) es un array directo
+    const enrichedItems = await runHybridScraper(1); // Página 1 por ahora
 
-    // 3. Validar la respuesta (array directo)
+    // 3. Validar la respuesta (ahora es un array)
     if (!enrichedItems || !Array.isArray(enrichedItems) || enrichedItems.length === 0) {
       throw new Error('No se recibieron items enriquecidos del scraper');
     }
 
-    // 4. Transformar Datos (mapeando enrichedItems directamente e incluyendo descripción y productos)
+    // 4. Transformar Datos (¡CON LAS LLAVES CORRECTAS EN MINÚSCULA!)
     const licitacionesParaGuardar = enrichedItems.map((item: any) => ({
       codigo: item.codigo,
       titulo: item.nombre,
-      descripcion: item.descripcion,
+      descripcion: item.descripcion || null, // Campo de detalle
       organismo: item.organismo || 'No especificado',
-      region: item.unidad,
+      region: item.unidad, // 'unidad' parece ser la región
       monto_clp: item.monto_disponible_CLP || 0,
       fecha_publicacion: item.fecha_publicacion, // La API ya usa formato ISO
       fecha_cierre: item.fecha_cierre, // La API ya usa formato ISO
       estado_mp: item.estado,
       url_ficha: `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.codigo}`,
-      // Guardamos el item enriquecido completo incluyendo productos
-      json_raw: { ...item, productos: item.productos },
+      // Guardamos el item enriquecido completo
+      json_raw: { ...item, productos: item.productos }, 
     }));
 
     // 5. Guardar en Supabase
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('Error en ROUTE.TS:', error.message);
+    console.error('Error en el cron job:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
