@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     // 2. Extraer datos (¡ahora usando fetch!)
     // Por ahora, solo extraemos la página 1
     const apiResponse: any = await runHybridScraper(1);
+    console.log('--- [CANARY V4] API Response JSON KEYS ---:', Object.keys(apiResponse));
 
     const items =
       Array.isArray(apiResponse)
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('--- [CANARY LOG] Error en ROUTE.TS ---:', error);
+    console.error('--- [CANARY V4] Error en ROUTE.TS ---:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
