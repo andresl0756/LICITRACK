@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V14] EJECUTANDO SCRAPER V5 (New Page + Ficha URL) ---');
+  console.log('--- [CANARY V15] EJECUTANDO SCRAPER V5 (New Page + Ficha URL) ---');
   let browser: Browser | null = null;
 
   try {
@@ -77,10 +77,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
         await detailPage.setUserAgent(USER_AGENT);
 
         console.log(`Navegando al detalle: ${urlFicha}`);
-        await detailPage.goto(urlFicha, { waitUntil: 'domcontentloaded' });
-
-        // Esperamos el H1 del detalle (¡Selector correcto!)
-        await detailPage.waitForSelector('h1[class*="dqvMeL"]', { timeout: 15000 }); // 15 seg de timeout
+        await detailPage.goto(urlFicha, { waitUntil: 'networkidle0', timeout: 45000 });
 
         const detalles = await detailPage.evaluate(() => {
           const getDetailValue = (keyText: string): string | null => {
