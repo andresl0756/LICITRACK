@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 // PASO 1: Importar desde el NUEVO archivo scraper-v3
-import { runHybridScraper } from '../../../../../lib/api/scraper-v3';
+import { runHybridScraper } from '../../../../../lib/api/scraper-service';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 export async function GET(request: Request) {
