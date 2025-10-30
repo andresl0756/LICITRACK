@@ -46,24 +46,23 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
         const getText = (sel: string) =>
           (card.querySelector(sel)?.textContent || "").trim() || null;
 
+        // --- Selectores que SÍ funcionaron ---
         const titulo =
           card.querySelector('h4[title]')?.textContent?.trim() || null;
-
         const codigo = getText('span[class*="dvJGcM"]');
 
-        const organismo = getText('p[class*="OrPQk"]');
+        // --- Selectores CORREGIDOS (basados en json_raw) ---
+        const organismo = getText('p[class*="jfwXSc"]');
+        const montoText = getText('h3[class*="jaayVL"]');
+        const fechaCierreText = getText('div[class*="keoiAX"] h3');
+        const fechaPublicacionText = getText('div[class*="cznDE"] h3');
 
-        const montoText = getText('div[class*="kszCox"] h3');
-
-        const fechaCierreText = getText('div[class*="iztDaw"] h3');
-
-        const fechaPublicacionText = getText('div[class*="cqVaPv"] h3');
-
+        // --- Lógica de URL (ya funciona bien) ---
         let urlFicha: string | null = null;
         const anchor = card.querySelector('a[class^="sc-dsPRyZ"]') as HTMLAnchorElement | null;
 
-        if (anchor && (anchor as HTMLAnchorElement).href) {
-          urlFicha = (anchor as HTMLAnchorElement).href;
+        if (anchor && anchor.href) {
+          urlFicha = anchor.href;
         } else if (codigo) {
           const codigoLimpio = codigo.replace(/\s/g, "");
           urlFicha = `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${codigoLimpio}`;
@@ -78,7 +77,7 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
           fecha_cierre: fechaCierreText ?? undefined,
           url_ficha: urlFicha ?? undefined,
           es_compra_agil: true,
-          json_raw: { raw: (card as HTMLElement).innerHTML },
+          json_raw: { raw: card.innerHTML },
         };
       });
     });
