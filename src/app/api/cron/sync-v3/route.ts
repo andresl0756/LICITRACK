@@ -1,26 +1,22 @@
 import { NextResponse } from 'next/server';
-// PASO 1: Importar desde el NUEVO archivo scraper-v4
 import { scrapePublicListings } from '../../../../../lib/api/scraper-v4';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-// Agregar tamaño de lote
 const BATCH_SIZE = 20;
 
 export async function GET(request: Request) {
-  // Seguridad
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get('secret');
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // 1. Leer el estado actual
   const { data: stateData, error: stateError } = await (supabaseAdmin as any)
     .from('app_state')
     .select('value')
-    .eq('key', 'cron_sync_v2_state')
+    .eq('key', 'cron_sync_v3_state')
     .single();
 
   if (stateError) {
@@ -29,9 +25,9 @@ export async function GET(request: Request) {
   }
 
   const stateValue = (stateData?.value ?? {}) as any;
-  let lastProcessedPage = Number(stateValue?.last_processed_page ?? 0);
+  const lastProcessedPage = Number(stateValue?.last_processed_page ?? 0);
   const startPage = lastProcessedPage + 1;
-  console.log(`Cron sync-v2: Starting batch from page ${startPage}.`);
+  console.log(`Cron sync-v3: Starting batch from page ${startPage}.`);
 
   // 2. Ejecutar la primera página para obtener pageCount total
   const firstPageResponse = await scrapePublicListings({ page: startPage });
@@ -59,24 +55,22 @@ export async function GET(request: Request) {
 
   console.log(`Batch fetched. Total items in batch: ${allLicitacionesInBatch.length}.`);
 
-  // 5. Mapear y hacer Upsert (lógica existente adaptada al lote)
+  // 5. Mapear y hacer Upsert
   const licitacionesParaGuardar = allLicitacionesInBatch.map((item: any) => ({
     codigo: item.codigo,
     titulo: item.nombre,
     descripcion: item.descripcion || null,
     organismo: item.organismo || 'No especificado',
-    // region no corresponde a 'unidad'; se deja en null
     region: null,
     monto_clp: item.monto_disponible_CLP || 0,
     fecha_publicacion: item.fecha_publicacion,
     fecha_cierre: item.fecha_cierre,
     estado_mp: item.estado,
     url_ficha: `https://buscador.mercadopublico.cl/ficha?code=${item.codigo}`,
-    // Guardar objeto original en json_raw (productos podrían no estar presentes aquí)
     json_raw: { ...item },
   }));
 
-  const { error: upsertError } = await supabaseAdmin
+  const { error: upsertError } = await (supabaseAdmin as any)
     .from('licitaciones')
     .upsert(licitacionesParaGuardar, { onConflict: 'codigo' });
 
@@ -96,15 +90,13 @@ export async function GET(request: Request) {
       value: { last_processed_page: newLastProcessedPage },
       updated_at: new Date().toISOString(),
     })
-    .eq('key', 'cron_sync_v2_state');
+    .eq('key', 'cron_sync_v3_state');
 
   if (updateError) {
     console.error('Error updating cron state:', updateError);
   }
 
-  console.log(
-    `Cron sync-v2: Batch complete. State updated to page ${newLastProcessedPage}.`
-  );
+  console.log(`Cron sync-v3: Batch complete. State updated to page ${newLastProcessedPage}.`);
 
   return NextResponse.json({
     processedPages: `${startPage}-${endPage}`,
