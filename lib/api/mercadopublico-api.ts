@@ -13,6 +13,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
  * respuesta JSON de la API interna para obtener los datos.
  */
 export async function fetchLicitaciones(page: number = 1): Promise<unknown> {
+  console.log('--- [CANARY LOG] Iniciando API HÍBRIDA v2 ---');
   let browser: Browser | null = null;
 
   try {
@@ -56,6 +57,8 @@ export async function fetchLicitaciones(page: number = 1): Promise<unknown> {
       }, 30000); // 30 segundos
 
       browserPage.on('response', async (response) => {
+        const url = response.url();
+        console.log(`[Intercepción]: ${response.status()} ${url}`);
         try {
           const url = response.url();
 
