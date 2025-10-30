@@ -3,9 +3,6 @@ import { runHybridScraper } from '../../../../../lib/api/scraper-v3';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 export async function GET(request: Request) {
-  // Log Canario V9
-  console.log('--- [CANARY V9] EJECUTANDO ROUTE.TS (sync-v2) ---');
-
   // 1. Seguridad
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get('secret');
@@ -15,25 +12,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Extraer datos (¡ahora usando el scraper v3!)
-    const apiResponse = (await runHybridScraper(1)) as {
-      payload: { resultados: Array<Record<string, any>> };
-    }; // Página 1 por ahora
+    // 2. Extraer datos (ahora el scraper devuelve un array enriquecido)
+    const enrichedItems = (await runHybridScraper(1)) as Array<Record<string, any>>; // Página 1 por ahora
 
-    // 3. Validar la respuesta (con la llave correcta 'resultados')
-    if (
-      !apiResponse ||
-      !apiResponse.payload ||
-      !apiResponse.payload.resultados ||
-      apiResponse.payload.resultados.length === 0
-    ) {
-      throw new Error('No se recibieron datos de la API (payload.resultados está vacío o no existe)');
+    // 3. Validar la respuesta (array directo)
+    if (!enrichedItems || !Array.isArray(enrichedItems) || enrichedItems.length === 0) {
+      throw new Error('No se recibieron items enriquecidos del scraper');
     }
 
-    // 4. Transformar Datos (¡CON LAS LLAVES CORRECTAS EN MINÚSCULA!)
-    const licitacionesParaGuardar = apiResponse.payload.resultados.map((item: any) => ({
+    // 4. Transformar Datos (mapeando enrichedItems directamente e incluyendo descripción y productos)
+    const licitacionesParaGuardar = enrichedItems.map((item: any) => ({
       codigo: item.codigo,
       titulo: item.nombre,
+      descripcion: item.descripcion,
       organismo: item.organismo || 'No especificado',
       region: item.unidad,
       monto_clp: item.monto_disponible_CLP || 0,
@@ -41,7 +32,8 @@ export async function GET(request: Request) {
       fecha_cierre: item.fecha_cierre, // La API ya usa formato ISO
       estado_mp: item.estado,
       url_ficha: `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.codigo}`,
-      json_raw: item, // Guardamos el JSON completo del item
+      // Guardamos el item enriquecido completo incluyendo productos
+      json_raw: { ...item, productos: item.productos },
     }));
 
     // 5. Guardar en Supabase
@@ -63,7 +55,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('--- [CANARY V9] Error en ROUTE.TS ---:', error.message);
+    console.error('Error en ROUTE.TS:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
