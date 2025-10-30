@@ -24,6 +24,9 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
     });
 
     page = await browser.newPage();
+    await page!.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+    );
     await page!.goto(TARGET_URL);
 
     // Espera clave: asegurar carga del contenido dinámico
