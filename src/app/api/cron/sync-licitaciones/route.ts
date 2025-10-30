@@ -28,6 +28,7 @@ export async function GET(request: Request) {
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  console.log('--- [CANARY LOG] Iniciando ROUTE.TS v_HIBRIDO ---');
 
   try {
     // 2. Extraer datos (¡ahora usando fetch!)
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error("Error en el cron job:", error);
+    console.error('--- [CANARY LOG] Error en ROUTE.TS ---:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
