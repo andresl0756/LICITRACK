@@ -50,7 +50,16 @@ async function fetchDetailPublic(code: string): Promise<DetailResult> {
     throw err;
   }
 
-  return extractDetail(detailJson);
+  const detalles = extractDetail(detailJson);
+
+  // Si el modo público no entrega productos, lo consideramos fallo para forzar fallback con token.
+  if (!Array.isArray(detalles.productos) || detalles.productos.length === 0) {
+    const err = new Error('Public detail missing productos_solicitados');
+    (err as any).status = 200;
+    throw err;
+  }
+
+  return detalles;
 }
 
 async function fetchDetailWithAuth(code: string, token: string): Promise<DetailResult> {
@@ -84,11 +93,12 @@ async function fetchDetailWithAuth(code: string, token: string): Promise<DetailR
 
 async function probePublicDetail(code: string): Promise<boolean> {
   try {
-    await fetchDetailPublic(code);
-    return true;
-  } catch (e: any) {
-    const status = e?.status;
-    return !(status === 401 || status === 403);
+    const detalles = await fetchDetailPublic(code);
+    // El modo público solo se considera disponible si trae productos.
+    return Array.isArray(detalles.productos) && detalles.productos.length > 0;
+  } catch {
+    // Cualquier error en el probe desactiva el modo público para el lote.
+    return false;
   }
 }
 
