@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  console.log('--- [CANARY LOG] Iniciando ROUTE.TS v_HIBRIDO ---');
+  console.log('--- [CANARY V3] EXECUTING ROUTE.TS ---');
 
   try {
     // 2. Extraer datos (¡ahora usando fetch!)
