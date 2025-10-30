@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { runHybridScraper } from '../../../../../lib/api/scraper-service';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
   // 1. Seguridad
   const { searchParams } = new URL(request.url);
