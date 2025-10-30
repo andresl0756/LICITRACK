@@ -28,17 +28,19 @@ export async function GET(request: Request) {
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  console.log('--- [CANARY V3] EXECUTING ROUTE.TS ---');
+  console.log('--- [CANARY V7] EXECUTING ROUTE.TS ---');
 
   try {
     // 2. Extraer datos (¡ahora usando fetch!)
     // Por ahora, solo extraemos la página 1
     const apiResponse: any = await runHybridScraper(1);
-    console.log('--- [CANARY V6] API Response.payload KEYS ---:', Object.keys(apiResponse.payload));
+    console.log('--- [CANARY V7] API Response.payload KEYS ---:', Object.keys(apiResponse.payload));
 
-    if (!apiResponse || !apiResponse.payload || !apiResponse.payload.resultados) {
-      throw new Error('No se recibieron datos de la API (payload o payload.resultados faltante)');
+    if (!apiResponse || !apiResponse.payload || !apiResponse.payload.resultados || apiResponse.payload.resultados.length === 0) {
+      throw new Error('No se recibieron datos de la API (payload.resultados está vacío o no existe)');
     }
+
+    console.log('--- [CANARY V7] KEYS del primer item ---:', Object.keys(apiResponse.payload.resultados[0]));
 
     // 3. Transformar Datos (Limpiar y Mapear)
     const licitacionesParaGuardar: Database["public"]["Tables"]["licitaciones"]["Insert"][] =
@@ -95,7 +97,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('--- [CANARY V6] Error en ROUTE.TS ---:', error);
+    console.error('--- [CANARY V7] Error en ROUTE.TS ---:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
