@@ -4,7 +4,12 @@ import type { Database } from "../supabase/database.types";
 
 export const TARGET_URL = "https://buscador.mercadopublico.cl/compra-agil";
 
-type LicitacionExtraida = Partial<Database["public"]["Tables"]["licitaciones"]["Row"]>;
+type LicitacionExtraida = Partial<Database["public"]["Tables"]["licitaciones"]["Row"]> & {
+  descripcion?: string | null;
+  plazo_entrega?: string | null;
+  direccion_entrega?: string | null;
+  productos?: any[];
+};
 
 /**
  * Ejecuta el scraping de Compra Ágil usando Chromium optimizado para serverless.
@@ -81,6 +86,57 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
         };
       });
     });
+
+    // Enriquecer cada item con datos de la ficha de detalle (secuencial para no sobrecargar)
+    for (const item of items) {
+      const url = item.url_ficha;
+      if (!url) continue;
+
+      const detailPage = await browser.newPage();
+      await detailPage.setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+      );
+      await detailPage.goto(url);
+      await detailPage.waitForSelector('h1[class*="dqvMeL"]');
+
+      const detalles = await detailPage.evaluate(() => {
+        // Función 1: Para buscar campos de texto (Descripción, Plazo, etc.)
+        const getDetailValue = (keyText: string): string | null => {
+          const allRows = document.querySelectorAll('div.sc-iQLUmZ div.MuiGrid-container[class*="sc-kpQBza"]');
+          const row = Array.from(allRows).find(el => el.querySelector('p')?.textContent?.trim() === keyText);
+          return row?.querySelector('div[class*="MuiGrid-grid-sm-8"] p')?.textContent?.trim() || null;
+        };
+
+        // Función 2: Para extraer la lista de productos
+        const getProducts = () => {
+          const productContainer = document.querySelector('form[class*="sc-gjcSds"]');
+          if (!productContainer) return [] as any[];
+
+          const productItems = productContainer.querySelectorAll('div[class*="sc-iKTcqh hdEFTf"]');
+          return Array.from(productItems).map(item => {
+            const name = (item.querySelector('p[class*="gcqPWt"]')?.textContent || "").trim() || null;
+            const desc = (item.querySelector('p[class*="fQHKbh"]')?.textContent || "").trim() || null;
+            const quantity = (item.querySelector('div[class*="bQhPOs"] p')?.textContent || "").trim() || null;
+            return { name, desc, quantity };
+          });
+        };
+
+        const descripcion = getDetailValue('Descripción');
+        const plazo_entrega = getDetailValue('Plazo de entrega');
+        const direccion_entrega = getDetailValue('Dirección de entrega');
+        const productos = getProducts();
+
+        return { descripcion, plazo_entrega, direccion_entrega, productos };
+      });
+
+      // Combinar datos
+      item.descripcion = detalles.descripcion;
+      item.plazo_entrega = detalles.plazo_entrega;
+      item.direccion_entrega = detalles.direccion_entrega;
+      item.productos = detalles.productos;
+
+      await detailPage.close();
+    }
 
     return items;
   } catch (error) {
