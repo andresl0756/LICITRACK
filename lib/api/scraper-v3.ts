@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V19] EJECUTANDO SCRAPER V5 (New Page + Cookies) ---');
+  console.log('--- [CANARY V20] EJECUTANDO SCRAPER V5 (New Page + Cookies) ---');
   let browser: Browser | null = null;
 
   try {
@@ -83,21 +83,36 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
         await detailPage.waitForSelector('h1[class*="dqvMeL"]', { timeout: 15000 });
 
         const detalles = await detailPage.evaluate(() => {
+          // --- Función Robusta para getDetailValue ---
           const getDetailValue = (keyText: string): string | null => {
-            const allRows = document.querySelectorAll('div.sc-iQLUmZ div.MuiGrid-container[class*="sc-kpQBza"]');
-            const row = Array.from(allRows).find(el => el.querySelector('p')?.textContent?.trim() === keyText);
-            const valueEl = row?.querySelector('div[class*="MuiGrid-grid-sm-8"] p') as HTMLElement | null;
-            return valueEl?.textContent?.trim() || null;
+            // Encuentra todos los <p> que son etiquetas (labels)
+            const allPs = document.querySelectorAll('p[class*="kUyaMh"]');
+            const labelP = Array.from(allPs).find(p => p.textContent?.trim() === keyText);
+
+            if (!labelP) return null;
+            // El valor está en el <div> hermano, dentro de otro <p>
+            const valueP = labelP.closest('div[class*="MuiGrid-grid-sm-3"]')?.nextElementSibling?.querySelector('p');
+            return valueP?.textContent?.trim() || null;
           };
 
+          // --- Función Robusta para getProducts ---
           const getProducts = () => {
-            const productContainer = document.querySelector('form[class*="sc-gjcSds"]');
+            // 1. Encuentra el título "Listado de productos solicitados"
+            const titleH4 = Array.from(document.querySelectorAll('h4')).find(h => h.textContent?.trim() === 'Listado de productos solicitados');
+            if (!titleH4) return [];
+
+            // 2. Encuentra el contenedor <form> que está cerca de ese título
+            const productContainer = titleH4.closest('div[class*="bWmiyD"]')?.parentElement?.querySelector('form[class*="sc-gjcSds"]');
             if (!productContainer) return [];
-            const productItems = productContainer.querySelectorAll('div[class*="sc-iKTcqh hdEFTf"]');
+
+            // 3. Encuentra todas las "tarjetas" de producto dentro del form
+            const productItems = productContainer.querySelectorAll('div[class*="sc-ggPNws"][display="flex"]');
+
             return Array.from(productItems).map(item => {
-              const name = (item.querySelector('p[class*="gcqPWt"]') as HTMLElement | null)?.textContent?.trim() || null;
-              const desc = (item.querySelector('p[class*="fQHKbh"]') as HTMLElement | null)?.textContent?.trim() || null;
-              const quantity = (item.querySelector('div[class*="bQhPOs"] p') as HTMLElement | null)?.textContent?.trim() || null;
+              // 4. Extrae los datos de cada tarjeta
+              const name = item.querySelector('p[class*="gcqPWt"]')?.textContent?.trim() || null;
+              const desc = item.querySelector('p[class*="fQHKbh"]')?.textContent?.trim() || null;
+              const quantity = item.querySelector('p[class*="kUyaMh"]')?.textContent?.trim() || null;
               return { name, desc, quantity };
             });
           };
@@ -111,19 +126,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
         enrichedItems.push({ ...item, ...detalles });
       } catch (e: any) {
-        console.error(`--- [CANARY V19] ERROR EN DETALLE PARA ${item.codigo} ---`);
-        console.error(`--- ERROR: ${e.message} ---`);
-
-        if (detailPage) {
-          console.error('--- HTML DE LA PÁGINA DE ERROR (DETALLE) ---');
-          try {
-            const pageHtml = await detailPage.content();
-            console.error(pageHtml);
-          } catch (htmlError: any) {
-            console.error(`No se pudo obtener el HTML de la página: ${htmlError.message}`);
-          }
-          console.error('--- FIN DEL HTML DE ERROR (DETALLE) ---');
-        }
+        console.warn(`--- [CANARY V20] Falló detalle ${item.codigo}: ${e.message}. Omitiendo.`);
         enrichedItems.push(item); // Guardar solo los datos de la lista
       } finally {
         if (detailPage) {
