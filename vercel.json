@@ -3,7 +3,7 @@
   "ignoreCommand": "exit 1",
   "crons": [
     {
-      "path": "/api/cron/sync-v3",
+      "path": "/api/cron/sync-v3?secret=${CRON_SECRET}",
       "schedule": "0 * * * *"
     }
   ]
