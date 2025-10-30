@@ -5,60 +5,54 @@ import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
 const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const API_DETAIL_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
+const AUTH_API_URL = 'https://servicios-prd.mercadopublico.cl/v1/auth/publico';
 const X_API_KEY = 'e93089e4-437c-4723-b343-4fa20045e3bc';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V17] EJECUTANDO SCRAPER V6 (Robo de Token + Fetch) ---');
+  console.log('--- [CANARY V18] EJECUTANDO SCRAPER V7 (Robo de Token Auth + Fetch) ---');
   let browser: Browser | null = null;
 
   try {
     const executablePath = await chromium.executablePath();
     browser = await puppeteer.launch({
       args: chromium.args,
-      executablePath: executablePath,
+      executablePath,
       headless: true,
     });
 
     const listPage = await browser.newPage();
     await listPage.setUserAgent(USER_AGENT);
 
-    let authToken: string | null = null;
-
-    // --- 1. Configurar Interceptores ---
-    await listPage.setRequestInterception(true);
-
-    // Promesa para robar el Token de Autorización
+    // Promesa para robar el Token de Autorización desde la API de auth
     const tokenPromise: Promise<string> = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timeout: Token de Auth no encontrado.')), 45000);
+      const timeout = setTimeout(() => reject(new Error('Timeout: Token de Auth (auth/publico) no encontrado.')), 45000);
 
-      listPage.on('request', (request) => {
+      listPage.on('response', async (response) => {
         try {
-          if (request.url().startsWith(API_LIST_URL)) {
-            const headers = request.headers();
-            if (headers.authorization) {
-              console.log('[Intercepción Request]: Token de Auth capturado!');
-              authToken = headers.authorization;
-              clearTimeout(timer);
-              resolve(headers.authorization);
+          if (response.url().startsWith(AUTH_API_URL) && response.status() === 200) {
+            const json = await response.json().catch(() => null);
+            if (json && (json as any).access_token) {
+              clearTimeout(timeout);
+              console.log('[Intercepción]: Token de Auth capturado!');
+              resolve((json as any).access_token as string);
             }
           }
-        } finally {
-          // Continuar todas las solicitudes
-          request.continue();
+        } catch {
+          // Ignora errores de parseo de otras respuestas
         }
       });
     });
 
     // Promesa para robar el JSON de la Lista
-    const listPromise: Promise<unknown> = new Promise((resolve, reject) => {
+    const listPromise: Promise<any> = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 45000);
 
       listPage.on('response', async (response) => {
         const url = response.url();
         if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200) {
           try {
-            console.log('[Intercepción Response]: JSON de Lista capturado!');
+            console.log('[Intercepción]: JSON de Lista capturado!');
             const json = await response.json();
             clearTimeout(timeout);
             resolve(json);
@@ -84,11 +78,12 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     const [apiResponse, capturedAuthToken] = await Promise.all([listPromise, tokenPromise]);
 
     const items = (apiResponse as any)?.payload?.resultados ?? [];
-    await listPage.close(); // Cerramos la página de lista
+    await listPage.close();
+    await browser.close();
+    browser = null;
 
-    // --- 3. Iterar y Obtener Detalles con Fetch ---
+    // --- 3. Iterar y Obtener Detalles con Fetch (RÁPIDO) ---
     const enrichedItems: any[] = [];
-
     for (const item of items) {
       const detailUrl = `${API_DETAIL_URL}?action=ficha&code=${item.codigo}`;
 
@@ -98,8 +93,8 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
           method: 'GET',
           headers: {
             Accept: 'application/json, text/plain, */*',
-            Authorization: capturedAuthToken, // ¡El token robado!
-            'x-api-key': X_API_KEY, // ¡La llave estática!
+            Authorization: `Bearer ${capturedAuthToken}`,
+            'x-api-key': X_API_KEY,
             'User-Agent': USER_AGENT,
           },
         });
@@ -110,26 +105,24 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
         const detailJson = await detailResponse.json();
 
-        // Extraemos los detalles del JSON de la API de detalle
         const detalles = {
           descripcion: detailJson.payload?.descripcion ?? null,
           plazo_entrega: detailJson.payload?.plazo_entrega ?? null,
           direccion_entrega: detailJson.payload?.direccion_entrega ?? null,
-          // Usamos la llave correcta que vimos en la respuesta de la API de detalle
           productos: detailJson.payload?.productos_solicitados ?? [],
         };
 
         enrichedItems.push({ ...item, ...detalles });
       } catch (e: any) {
-        console.warn(`--- [CANARY V17] Falló FETCH de detalle ${item.codigo}: ${e.message}. Omitiendo.`);
-        enrichedItems.push(item); // Guardar solo los datos de la lista
+        console.warn(`--- [CANARY V18] Falló FETCH de detalle ${item.codigo}: ${e.message}. Omitiendo.`);
+        enrichedItems.push(item);
       }
     }
 
-    return enrichedItems; // Devuelve el array de items enriquecidos
+    return enrichedItems;
   } catch (error: any) {
-    console.error('Error durante el scraping híbrido (V17):', error);
-    throw new Error(`Scraping híbrido V17 falló: ${error?.message || String(error)}`);
+    console.error('Error durante el scraping híbrido (V18):', error);
+    throw new Error(`Scraping híbrido V18 falló: ${error?.message || String(error)}`);
   } finally {
     if (browser) {
       await browser.close();
