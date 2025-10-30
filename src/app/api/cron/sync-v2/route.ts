@@ -28,16 +28,16 @@ export async function GET(request: Request) {
     const licitacionesParaGuardar = enrichedItems.map((item: any) => ({
       codigo: item.codigo,
       titulo: item.nombre,
-      descripcion: item.descripcion || null, // Campo de detalle
+      descripcion: item.descripcion || null,
       organismo: item.organismo || 'No especificado',
-      region: item.unidad, // 'unidad' parece ser la región
+      // region no corresponde al campo 'unidad'; se deja en null
+      region: null,
       monto_clp: item.monto_disponible_CLP || 0,
-      fecha_publicacion: item.fecha_publicacion, // La API ya usa formato ISO
-      fecha_cierre: item.fecha_cierre, // La API ya usa formato ISO
+      fecha_publicacion: item.fecha_publicacion,
+      fecha_cierre: item.fecha_cierre,
       estado_mp: item.estado,
-      // ¡URL CORRECTA!
       url_ficha: `https://buscador.mercadopublico.cl/ficha?code=${item.codigo}`,
-      // Guardamos el item enriquecido completo
+      // Guardamos el item enriquecido completo (incluye 'unidad' y 'productos')
       json_raw: { ...item, productos: item.productos },
     }));
 

@@ -5,9 +5,8 @@ import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
 const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const API_DETAIL_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
-const AUTH_API_URL = 'https://servicios-prd.mercadopublico.cl/v1/auth/publico';
-const X_API_KEY = 'e93089e4-437c-4723-b343-4fa20045e3bc';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+const X_API_KEY = 'e93089e4-437c-4723-b343-4fa20045e3bc';
 
 type DetailResult = {
   descripcion: string | null;
@@ -52,7 +51,7 @@ async function fetchDetailPublic(code: string): Promise<DetailResult> {
 
   const detalles = extractDetail(detailJson);
 
-  // Si el modo público no entrega productos, lo consideramos fallo para forzar fallback con token.
+  // El modo público solo se considera disponible si trae productos.
   if (!Array.isArray(detalles.productos) || detalles.productos.length === 0) {
     const err = new Error('Public detail missing productos_solicitados');
     (err as any).status = 200;
@@ -62,14 +61,14 @@ async function fetchDetailPublic(code: string): Promise<DetailResult> {
   return detalles;
 }
 
-async function fetchDetailWithAuth(code: string, token: string): Promise<DetailResult> {
+async function fetchDetailWithAuth(code: string, token: string, apiKey?: string): Promise<DetailResult> {
   const detailUrl = `${API_DETAIL_URL}?action=ficha&code=${code}`;
   const response = await fetch(detailUrl, {
     method: 'GET',
     headers: {
       Accept: 'application/json, text/plain, */*',
       Authorization: `Bearer ${token}`,
-      'x-api-key': X_API_KEY,
+      'x-api-key': apiKey ?? X_API_KEY,
       'User-Agent': USER_AGENT,
       Referer: 'https://buscador.mercadopublico.cl/',
     },
@@ -91,6 +90,43 @@ async function fetchDetailWithAuth(code: string, token: string): Promise<DetailR
   return extractDetail(detailJson);
 }
 
+/**
+ * Captura Authorization y x-api-key abriendo una ficha real en una nueva página.
+ * Reutiliza el mismo browser ya iniciado para no pagar costos extra.
+ */
+async function captureDetailAuth(browser: Browser, code: string, timeoutMs: number = 45000): Promise<{ token: string; apiKey?: string }> {
+  const page = await browser.newPage();
+  await page.setUserAgent(USER_AGENT);
+
+  const capturePromise: Promise<{ token: string; apiKey?: string }> = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timeout: request de detalle no interceptado')), timeoutMs);
+
+    page.on('request', async (request) => {
+      try {
+        const url = request.url();
+        if (url.startsWith(API_DETAIL_URL) && url.includes('action=ficha') && url.includes('code=')) {
+          const headers = request.headers();
+          const authorization = headers['authorization'] || headers['Authorization'];
+          const apiKey = headers['x-api-key'] || headers['X-API-KEY'];
+          if (authorization && authorization.startsWith('Bearer ')) {
+            clearTimeout(timer);
+            resolve({ token: authorization.replace('Bearer ', ''), apiKey });
+          }
+        }
+      } catch {
+        // Silenciar errores de lectura
+      }
+    });
+  });
+
+  const fichaUrl = `https://buscador.mercadopublico.cl/ficha?code=${encodeURIComponent(code)}`;
+  await page.goto(fichaUrl, { waitUntil: 'domcontentloaded' });
+
+  const result = await capturePromise;
+  await page.close();
+  return result;
+}
+
 async function probePublicDetail(code: string): Promise<boolean> {
   try {
     const detalles = await fetchDetailPublic(code);
@@ -103,7 +139,7 @@ async function probePublicDetail(code: string): Promise<boolean> {
 }
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [HYBRID MODE] Public-first with probe & circuit breaker, fallback to token + x-api-key ---');
+  console.log('--- [HYBRID MODE] Public-first; si falla, captura Authorization desde request de detalle y usa token + x-api-key ---');
   let browser: Browser | null = null;
 
   try {
@@ -116,26 +152,6 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
     const listPage = await browser.newPage();
     await listPage.setUserAgent(USER_AGENT);
-
-    // Captura de token de autenticación (body JSON) con timeout claro
-    const tokenPromise: Promise<string> = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout: Token de Auth (auth/publico) no encontrado.')), 45000);
-
-      listPage.on('response', async (response) => {
-        try {
-          if (response.url().startsWith(AUTH_API_URL) && response.status() === 200) {
-            const json = await response.json().catch(() => null);
-            if (json && (json as any).access_token) {
-              clearTimeout(timeout);
-              console.log('[Intercepción]: Token de Auth capturado!');
-              resolve((json as any).access_token as string);
-            }
-          }
-        } catch {
-          // Ignorar parseos inválidos
-        }
-      });
-    });
 
     // Captura del JSON de la lista
     const listPromise: Promise<any> = new Promise((resolve, reject) => {
@@ -156,7 +172,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
       });
     });
 
-    // Navegación para disparar llamadas de lista y auth
+    // Navegación para disparar llamadas de lista
     const listUrl = new URL(VISUAL_PAGE_URL);
     listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
     listUrl.searchParams.append('date_to', getTodayFormatted());
@@ -167,7 +183,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     console.log(`Navegando a la página visual: ${listUrl.toString()}`);
     await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
 
-    // Esperamos la lista; el token lo pediremos sólo si hace falta
+    // Esperamos la lista
     const apiResponse = await listPromise;
     const items = (apiResponse as any)?.payload?.resultados ?? [];
     if (!Array.isArray(items) || items.length === 0) {
@@ -188,11 +204,16 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
       console.log('[Probe] Modo público falló inesperadamente; usaremos autenticación.');
     }
 
-    // El token sólo si lo necesitaremos
+    // Token & x-api-key capturados cuando haga falta
     let capturedAuthToken: string | null = null;
-    const ensureToken = async () => {
+    let capturedApiKey: string | undefined;
+
+    const ensureToken = async (codeForCapture: string) => {
       if (capturedAuthToken) return capturedAuthToken;
-      capturedAuthToken = await tokenPromise;
+      const { token, apiKey } = await captureDetailAuth(browser!, codeForCapture);
+      capturedAuthToken = token;
+      capturedApiKey = apiKey;
+      console.log('[Intercepción]: Authorization capturado desde request de detalle.');
       return capturedAuthToken;
     };
 
@@ -225,8 +246,8 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
           // Fallback inmediato para este ítem
           try {
-            const token = await ensureToken();
-            const detallesAuth = await fetchDetailWithAuth(code, token);
+            const token = await ensureToken(code);
+            const detallesAuth = await fetchDetailWithAuth(code, token, capturedApiKey);
             enrichedItems.push({ ...item, ...detallesAuth });
           } catch (e2: any) {
             console.warn(`--- [AUTH FALLBACK] También falló detalle ${code}: ${e2?.message}. Omitiendo detalles.`);
@@ -235,8 +256,8 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
         }
       } else {
         try {
-          const token = await ensureToken();
-          const detalles = await fetchDetailWithAuth(code, token);
+          const token = await ensureToken(code);
+          const detalles = await fetchDetailWithAuth(code, token, capturedApiKey);
           enrichedItems.push({ ...item, ...detalles });
         } catch (e: any) {
           console.warn(`--- [AUTH] Falló detalle ${code}: ${e?.message}. Omitiendo.`);
@@ -251,7 +272,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
     return enrichedItems;
   } catch (error: any) {
-    console.error('Error durante el scraping híbrido (public-first + fallback):', error);
+    console.error('Error durante el scraping híbrido (public-first + token desde detalle):', error);
     throw new Error(`Scraping híbrido falló: ${error?.message || String(error)}`);
   } finally {
     if (browser) {

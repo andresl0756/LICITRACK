@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
-import { capturePublicAuthToken } from '../../../../../lib/api/mp-auth';
+import { captureAuthFromDetail } from '../../../../../lib/api/mp-auth';
 import { fetchDetalleConAuth } from '../../../../../lib/api/mercadopublico-detail';
 
 export const runtime = 'nodejs';
@@ -47,9 +47,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, message: 'No hay licitaciones pendientes de productos.' });
     }
 
-    // 2) Capturar token una vez
-    let token = await capturePublicAuthToken();
+    // 2) Capturar token desde un request REAL de detalle usando el primer código
+    const primerCodigo = pendientes[0]?.codigo;
+    if (!primerCodigo) {
+      return NextResponse.json({ success: false, message: 'No se encontró un código válido para iniciar la captura.' }, { status: 400 });
+    }
 
+    let { token, apiKey } = await captureAuthFromDetail(primerCodigo);
     let exitosos = 0;
     let procesados = 0;
 
@@ -58,9 +62,9 @@ export async function GET(request: Request) {
       procesados += 1;
 
       try {
-        let detalle = await fetchDetalleConAuth(row.codigo, token);
-        // Si no trae productos, lo contamos como sin cambios
+        const detalle = await fetchDetalleConAuth(row.codigo, token, apiKey);
         if (!Array.isArray(detalle.productos) || detalle.productos.length === 0) {
+          // Sin cambios si no trae productos
           continue;
         }
 
@@ -90,12 +94,15 @@ export async function GET(request: Request) {
           console.warn(`Update falló para ${row.codigo}: ${upErr.message}`);
         }
       } catch (e: any) {
-        // Si el token expiró, se renueva y reintenta 1 vez
-        if (e?.status === 401 || e?.status === 403 || /Unauthorized/.test(String(e?.message))) {
+        // Renovar token si expira (401/403), capturando nuevamente desde un detalle REAL
+        const msg = String(e?.message || e);
+        if (e?.status === 401 || e?.status === 403 || /Unauthorized/.test(msg)) {
           try {
-            token = await capturePublicAuthToken();
-            const detalle = await fetchDetalleConAuth(row.codigo, token);
+            const { token: nuevoToken, apiKey: nuevaApiKey } = await captureAuthFromDetail(row.codigo);
+            token = nuevoToken;
+            apiKey = nuevaApiKey;
 
+            const detalle = await fetchDetalleConAuth(row.codigo, token, apiKey);
             if (!Array.isArray(detalle.productos) || detalle.productos.length === 0) {
               continue;
             }
@@ -125,10 +132,10 @@ export async function GET(request: Request) {
               console.warn(`Update (tras renovar token) falló para ${row.codigo}: ${upErr.message}`);
             }
           } catch (e2: any) {
-            console.warn(`Reintento falló para ${row.codigo}: ${e2?.message || e2}`);
+            console.warn(`Reintento con token renovado falló para ${row.codigo}: ${e2?.message || e2}`);
           }
         } else {
-          console.warn(`Detalle falló para ${row.codigo}: ${e?.message || e}`);
+          console.warn(`Detalle falló para ${row.codigo}: ${msg}`);
         }
       }
     }

@@ -7,14 +7,14 @@ export type DetalleCompraAgil = {
   productos: any[];
 };
 
-export async function fetchDetalleConAuth(codigo: string, token: string): Promise<DetalleCompraAgil> {
+export async function fetchDetalleConAuth(codigo: string, token: string, apiKey?: string): Promise<DetalleCompraAgil> {
   const detailUrl = `${API_DETAIL_URL}?action=ficha&code=${encodeURIComponent(codigo)}`;
   const res = await fetch(detailUrl, {
     method: 'GET',
     headers: {
       Accept: 'application/json, text/plain, */*',
       Authorization: `Bearer ${token}`,
-      'x-api-key': X_API_KEY,
+      'x-api-key': apiKey ?? X_API_KEY,
       'User-Agent': USER_AGENT,
       Referer: 'https://buscador.mercadopublico.cl/',
     },
