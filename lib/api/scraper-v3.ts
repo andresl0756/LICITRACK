@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V10] EJECUTANDO SCRAPER V4 (New Page Logic) ---');
+  console.log('--- [CANARY V11] EJECUTANDO SCRAPER V4 (New Page Logic) ---');
   let browser: Browser | null = null;
 
   try {
@@ -78,7 +78,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     const enrichedItems: any[] = [];
 
     for (const item of items) {
-      const urlFicha = `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.codigo}`;
+      const urlFicha = `https://buscador.mercadopublico.cl/ficha?code=${(item as any).codigo}`;
       let detailPage: Page | null = null;
 
       try {
