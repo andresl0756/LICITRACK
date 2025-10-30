@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-// Importamos la V3 del scraper
+// PASO 1: Importar desde el NUEVO archivo scraper-v3
 import { runHybridScraper } from '../../../../../lib/api/scraper-v3';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       throw new Error('No se recibieron items enriquecidos del scraper');
     }
 
-    // 4. Transformar Datos (¡CON LAS LLAVES CORRECTAS EN MINÚSCULA!)
+    // 4. Transformar Datos (¡CON LAS LLAVES Y URL CORRECTAS!)
     const licitacionesParaGuardar = enrichedItems.map((item: any) => ({
       codigo: item.codigo,
       titulo: item.nombre,
@@ -33,9 +33,10 @@ export async function GET(request: Request) {
       fecha_publicacion: item.fecha_publicacion, // La API ya usa formato ISO
       fecha_cierre: item.fecha_cierre, // La API ya usa formato ISO
       estado_mp: item.estado,
-      url_ficha: `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.codigo}`,
+      // ¡URL CORRECTA!
+      url_ficha: `https://buscador.mercadopublico.cl/ficha?code=${item.codigo}`,
       // Guardamos el item enriquecido completo
-      json_raw: { ...item, productos: item.productos }, 
+      json_raw: { ...item, productos: item.productos },
     }));
 
     // 5. Guardar en Supabase
