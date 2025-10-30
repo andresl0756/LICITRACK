@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V11] EJECUTANDO SCRAPER V4 (New Page Logic) ---');
+  console.log('--- [CANARY V12] EJECUTANDO SCRAPER V4 (New Page Logic) ---');
   let browser: Browser | null = null;
 
   try {
@@ -37,7 +37,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     const licitacionesPromise: Promise<unknown> = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout: La API interna nunca respondió.'));
-      }, 30000);
+      }, 45000); // 45 segundos
 
       listPage.on('response', async (response) => {
         const url = response.url();
@@ -67,7 +67,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     listUrl.searchParams.append('status', '2');
 
     console.log(`Navegando a la página visual: ${listUrl.toString()}`);
-    listPage.goto(listUrl.toString()); // Inicia navegación
+    listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' }); // Inicia navegación optimizada
 
     const apiResponse = (await licitacionesPromise) as any;
     const items = apiResponse?.payload?.resultados ?? [];
