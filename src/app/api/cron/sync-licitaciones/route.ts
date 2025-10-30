@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchLicitaciones } from "../../../../../lib/api/mercadopublico-api";
+import { runHybridScraper } from "../../../../../lib/api/scraper-service";
 import { supabaseAdmin } from "../../../../../lib/supabase/server";
 import type { Database } from "../../../../../lib/supabase/database.types";
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   try {
     // 2. Extraer datos (¡ahora usando fetch!)
     // Por ahora, solo extraemos la página 1
-    const apiResponse: any = await fetchLicitaciones(1);
+    const apiResponse: any = await runHybridScraper(1);
 
     const items =
       Array.isArray(apiResponse)

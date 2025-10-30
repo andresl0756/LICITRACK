@@ -1,5 +1,5 @@
 import type { Database } from "../supabase/database.types";
-import { fetchLicitaciones } from "../api/mercadopublico-api";
+import { runHybridScraper } from "../api/scraper-service";
 
 type LicitacionExtraida = Partial<Database["public"]["Tables"]["licitaciones"]["Row"]> & {
   descripcion?: string | null;
@@ -20,7 +20,7 @@ type CompraAgilAPIResponse = {
  * Por ahora obtiene sólo la primera página y retorna el arreglo de resultados.
  */
 export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
-  const data = (await fetchLicitaciones(1)) as CompraAgilAPIResponse | any[];
+  const data = (await runHybridScraper(1)) as CompraAgilAPIResponse | any[];
   const list = Array.isArray(data) ? data : data?.results ?? (data as CompraAgilAPIResponse)?.items ?? [];
   return list as LicitacionExtraida[];
 }
