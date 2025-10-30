@@ -7,7 +7,7 @@ const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V12] EJECUTANDO SCRAPER V4 (New Page Logic) ---');
+  console.log('--- [CANARY V14] EJECUTANDO SCRAPER V5 (New Page + Ficha URL) ---');
   let browser: Browser | null = null;
 
   try {
@@ -21,17 +21,6 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
     const listPage = await browser.newPage();
     await listPage.setUserAgent(USER_AGENT);
-
-    // Bloquea recursos pesados en la página de lista para acelerar
-    await listPage.setRequestInterception(true);
-    listPage.on('request', (req) => {
-      const type = req.resourceType();
-      if (type === 'image' || type === 'media' || type === 'font') {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
 
     // --- 1. Interceptar la Lista de Resultados ---
     const licitacionesPromise: Promise<unknown> = new Promise((resolve, reject) => {
@@ -67,7 +56,8 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     listUrl.searchParams.append('status', '2');
 
     console.log(`Navegando a la página visual: ${listUrl.toString()}`);
-    listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' }); // Inicia navegación optimizada
+    // Inicia navegación y espera a que el DOM cargue (más rápido)
+    await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
 
     const apiResponse = (await licitacionesPromise) as any;
     const items = apiResponse?.payload?.resultados ?? [];
@@ -78,29 +68,19 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     const enrichedItems: any[] = [];
 
     for (const item of items) {
-      const urlFicha = `https://buscador.mercadopublico.cl/ficha?code=${(item as any).codigo}`;
+      // ¡LA URL CORRECTA QUE DESCUBRISTE!
+      const urlFicha = `https://buscador.mercadopublico.cl/ficha?code=${item.codigo}`;
       let detailPage: Page | null = null;
 
       try {
         detailPage = await browser.newPage();
         await detailPage.setUserAgent(USER_AGENT);
 
-        // Bloquea recursos pesados también en la página de detalle
-        await detailPage.setRequestInterception(true);
-        detailPage.on('request', (req) => {
-          const type = req.resourceType();
-          if (type === 'image' || type === 'media' || type === 'font') {
-            req.abort();
-          } else {
-            req.continue();
-          }
-        });
-
         console.log(`Navegando al detalle: ${urlFicha}`);
         await detailPage.goto(urlFicha, { waitUntil: 'domcontentloaded' });
 
-        // Esperamos un selector del detalle (manteniendo el propuesto)
-        await detailPage.waitForSelector('h1[class*="dqvMeL"]', { timeout: 10000 });
+        // Esperamos el H1 del detalle (¡Selector correcto!)
+        await detailPage.waitForSelector('h1[class*="dqvMeL"]', { timeout: 15000 }); // 15 seg de timeout
 
         const detalles = await detailPage.evaluate(() => {
           const getDetailValue = (keyText: string): string | null => {
@@ -113,7 +93,7 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
           const getProducts = () => {
             const productContainer = document.querySelector('form[class*="sc-gjcSds"]');
             if (!productContainer) return [];
-            const productItems = productContainer.querySelectorAll('div[class*="hdEFTf"]');
+            const productItems = productContainer.querySelectorAll('div[class*="sc-iKTcqh hdEFTf"]');
             return Array.from(productItems).map(item => {
               const name = (item.querySelector('p[class*="gcqPWt"]') as HTMLElement | null)?.textContent?.trim() || null;
               const desc = (item.querySelector('p[class*="fQHKbh"]') as HTMLElement | null)?.textContent?.trim() || null;
@@ -142,8 +122,8 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
 
     return enrichedItems; // Devuelve el array de items enriquecidos
   } catch (error: any) {
-    console.error('Error durante el scraping híbrido (V4):', error);
-    throw new Error(`Scraping híbrido V4 falló: ${error?.message || String(error)}`);
+    console.error('Error durante el scraping híbrido (V5):', error);
+    throw new Error(`Scraping híbrido V5 falló: ${error?.message || String(error)}`);
   } finally {
     if (browser) {
       await browser.close();
