@@ -34,15 +34,15 @@ export async function GET(request: Request) {
     // 2. Extraer datos (¡ahora usando fetch!)
     // Por ahora, solo extraemos la página 1
     const apiResponse: any = await runHybridScraper(1);
-    console.log('--- [CANARY V5] API Response.payload KEYS ---:', Object.keys(apiResponse.payload));
+    console.log('--- [CANARY V6] API Response.payload KEYS ---:', Object.keys(apiResponse.payload));
 
-    if (!apiResponse || !apiResponse.payload || !apiResponse.payload.data) {
-      throw new Error('No se recibieron datos de la API (payload o payload.data faltante)');
+    if (!apiResponse || !apiResponse.payload || !apiResponse.payload.resultados) {
+      throw new Error('No se recibieron datos de la API (payload o payload.resultados faltante)');
     }
 
     // 3. Transformar Datos (Limpiar y Mapear)
     const licitacionesParaGuardar: Database["public"]["Tables"]["licitaciones"]["Insert"][] =
-      apiResponse.payload.data.map((item: any) => {
+      apiResponse.payload.resultados.map((item: any) => {
         const fecha_publicacion =
           parseChileanDate(item.Fechas?.FechaPublicacion) ??
           parseChileanDate(item.FechaPublicacion);
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('--- [CANARY V5] Error en ROUTE.TS ---:', error);
+    console.error('--- [CANARY V6] Error en ROUTE.TS ---:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
