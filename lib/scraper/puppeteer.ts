@@ -87,24 +87,16 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
       });
     });
 
-    // Enriquecer cada item con datos de la ficha de detalle (secuencial para no sobrecargar)
+    // REFAC: single-page. REMOVED: uso de detailPage/newPage y transferencia de cookies.
+    const enrichedItems: LicitacionExtraida[] = [];
+
     for (const item of items) {
-      const url = item.url_ficha;
-      if (!url) continue;
+      if (!item.url_ficha) continue;
 
-      const detailPage = await browser.newPage();
-      await detailPage.setUserAgent(
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-      );
+      await page!.goto(item.url_ficha);
+      await page!.waitForSelector('h1[class*="dqvMeL"]');
 
-      // Copia las cookies de la página de lista a la nueva pestaña
-      const cookies = await page!.cookies();
-      await detailPage.setCookie(...(cookies as any));
-
-      await detailPage.goto(url);
-      await detailPage.waitForSelector('h1[class*="dqvMeL"]');
-
-      const detalles = await detailPage.evaluate(() => {
+      const detalles = await page!.evaluate(() => {
         // Función 1: Para buscar campos de texto (Descripción, Plazo, etc.)
         const getDetailValue = (keyText: string): string | null => {
           const allRows = document.querySelectorAll('div.sc-iQLUmZ div.MuiGrid-container[class*="sc-kpQBza"]');
@@ -134,16 +126,16 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
         return { descripcion, plazo_entrega, direccion_entrega, productos };
       });
 
-      // Combinar datos
-      item.descripcion = detalles.descripcion;
-      item.plazo_entrega = detalles.plazo_entrega;
-      item.direccion_entrega = detalles.direccion_entrega;
-      item.productos = detalles.productos;
-
-      await detailPage.close();
+      enrichedItems.push({
+        ...item,
+        descripcion: detalles.descripcion,
+        plazo_entrega: detalles.plazo_entrega,
+        direccion_entrega: detalles.direccion_entrega,
+        productos: detalles.productos,
+      });
     }
 
-    return items;
+    return enrichedItems;
   } catch (error) {
     if (page) {
       console.error("--- INICIO HTML DE PÁGINA EN ERROR ---");
