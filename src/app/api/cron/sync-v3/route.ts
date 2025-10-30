@@ -3,6 +3,7 @@ import { scrapePublicListings } from '../../../../../lib/api/scraper-v4';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const BATCH_SIZE = 20;
 
