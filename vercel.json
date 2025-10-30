@@ -1,4 +1,10 @@
 {
   "buildCommand": "next build",
-  "ignoreCommand": "exit 1"
+  "ignoreCommand": "exit 1",
+  "crons": [
+    {
+      "path": "/api/cron/sync-v3",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-// PASO 1: Importar desde el NUEVO archivo scraper-v3
-import { scrapePublicListings } from '../../../../../lib/api/scraper-v3';
+// PASO 1: Importar desde el NUEVO archivo scraper-v4
+import { scrapePublicListings } from '../../../../../lib/api/scraper-v4';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 export const runtime = 'nodejs';
