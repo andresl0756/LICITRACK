@@ -34,56 +34,47 @@ export async function GET(request: Request) {
     // 2. Extraer datos (¡ahora usando fetch!)
     // Por ahora, solo extraemos la página 1
     const apiResponse: any = await runHybridScraper(1);
-    console.log('--- [CANARY V4] API Response JSON KEYS ---:', Object.keys(apiResponse));
+    console.log('--- [CANARY V5] API Response.payload KEYS ---:', Object.keys(apiResponse.payload));
 
-    const items =
-      Array.isArray(apiResponse)
-        ? apiResponse
-        : apiResponse?.data ?? apiResponse?.results ?? apiResponse?.items;
-
-    if (!items || !Array.isArray(items)) {
-      throw new Error("No se recibieron datos de la API");
+    if (!apiResponse || !apiResponse.payload || !apiResponse.payload.data) {
+      throw new Error('No se recibieron datos de la API (payload o payload.data faltante)');
     }
 
     // 3. Transformar Datos (Limpiar y Mapear)
-    const licitacionesParaGuardar: Database["public"]["Tables"]["licitaciones"]["Insert"][] = [];
+    const licitacionesParaGuardar: Database["public"]["Tables"]["licitaciones"]["Insert"][] =
+      apiResponse.payload.data.map((item: any) => {
+        const fecha_publicacion =
+          parseChileanDate(item.Fechas?.FechaPublicacion) ??
+          parseChileanDate(item.FechaPublicacion);
 
-    for (const item of items) {
-      const fecha_publicacion =
-        parseChileanDate(item.Fechas?.FechaPublicacion) ??
-        parseChileanDate(item.FechaPublicacion);
+        const fecha_cierre =
+          parseChileanDate(item.Fechas?.FechaCierre) ??
+          parseChileanDate(item.FechaCierre);
 
-      const fecha_cierre =
-        parseChileanDate(item.Fechas?.FechaCierre) ??
-        parseChileanDate(item.FechaCierre);
-
-      // Omitimos registros sin fechas obligatorias
-      if (!fecha_publicacion || !fecha_cierre) continue;
-
-      licitacionesParaGuardar.push({
-        codigo: item.Codigo,
-        titulo: item.Nombre,
-        descripcion: item.Descripcion ?? null,
-        organismo: item.Comprador?.NombreOrganismo || "No especificado",
-        codigo_organismo: item.Comprador?.CodigoOrganismo ?? null,
-        rut_organismo: item.Comprador?.RutOrganismo ?? null,
-        region: item.Comprador?.RegionUnidad ?? null,
-        comuna: item.Comprador?.ComunaUnidad ?? null,
-        monto_clp: item.MontoEstimado ?? 0,
-        monto_utm: item.MontoUTM ?? null,
-        categoria: item.Categoria ?? null,
-        rubro: item.Rubro ?? null,
-        fecha_publicacion,
-        fecha_cierre,
-        fecha_adjudicacion:
-          parseChileanDate(item.Fechas?.FechaAdjudicacion) ?? null,
-        estado_mp: item.Estado || "Publicada",
-        url_ficha: `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.Codigo}`,
-        es_compra_agil: true,
-        json_raw: item,
-        sincronizado_at: new Date().toISOString(),
+        return {
+          codigo: item.Codigo,
+          titulo: item.Nombre,
+          descripcion: item.Descripcion ?? null,
+          organismo: item.Comprador?.NombreOrganismo || "No especificado",
+          codigo_organismo: item.Comprador?.CodigoOrganismo ?? null,
+          rut_organismo: item.Comprador?.RutOrganismo ?? null,
+          region: item.Comprador?.RegionUnidad ?? null,
+          comuna: item.Comprador?.ComunaUnidad ?? null,
+          monto_clp: item.MontoEstimado ?? 0,
+          monto_utm: item.MontoUTM ?? null,
+          categoria: item.Categoria ?? null,
+          rubro: item.Rubro ?? null,
+          fecha_publicacion,
+          fecha_cierre,
+          fecha_adjudicacion:
+            parseChileanDate(item.Fechas?.FechaAdjudicacion) ?? null,
+          estado_mp: item.Estado || "Publicada",
+          url_ficha: `https://www.mercadopublico.cl/CompraAgil/Ficha?id=${item.Codigo}`,
+          es_compra_agil: true,
+          json_raw: item,
+          sincronizado_at: new Date().toISOString(),
+        };
       });
-    }
 
     // 4. Guardar en Supabase
     const { data, error } = await supabaseAdmin
@@ -104,7 +95,7 @@ export async function GET(request: Request) {
       message: `Sincronización completa. ${data?.length || 0} registros procesados.`,
     });
   } catch (error: any) {
-    console.error('--- [CANARY V4] Error en ROUTE.TS ---:', error);
+    console.error('--- [CANARY V5] Error en ROUTE.TS ---:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
