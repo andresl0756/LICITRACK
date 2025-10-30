@@ -1,18 +1,19 @@
-import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import puppeteer, { type Browser } from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
 
-const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
-const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
+const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil'; // Página visual
+const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil'; // API de lista a interceptar
+const API_DETAIL_URL = 'https://api.buscador.mercadopublico.cl/compra-agil'; // API de detalle para fetch
+const X_API_KEY = 'e93089e4-437c-4723-b343-4fa20045e3bc'; // Llave estática descubierta
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
-  console.log('--- [CANARY V15] EJECUTANDO SCRAPER V5 (New Page + Ficha URL) ---');
+  console.log('--- [CANARY V17] EJECUTANDO SCRAPER V6 (Robo de Token + Fetch) ---');
   let browser: Browser | null = null;
 
   try {
     const executablePath = await chromium.executablePath();
-
     browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: executablePath,
@@ -22,105 +23,106 @@ export async function runHybridScraper(page: number = 1): Promise<any[]> {
     const listPage = await browser.newPage();
     await listPage.setUserAgent(USER_AGENT);
 
-    // --- 1. Interceptar la Lista de Resultados ---
-    const licitacionesPromise: Promise<unknown> = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout: La API interna nunca respondió.'));
-      }, 45000); // 45 segundos
+    let authToken: string | null = null;
 
+    // --- 1. Configurar Interceptores ---
+    await listPage.setRequestInterception(true);
+
+    // Promesa para robar el Token de Autorización
+    const tokenPromise = new Promise<string>((resolve, reject) => {
+      listPage.on('request', (request) => {
+        try {
+          if (request.url().startsWith(API_LIST_URL)) {
+            const headers = request.headers();
+            if (headers.authorization) {
+              console.log('[Intercepción Request]: Token de Auth capturado!');
+              authToken = headers.authorization;
+              resolve(headers.authorization);
+            }
+          }
+        } finally {
+          request.continue();
+        }
+      });
+      setTimeout(() => reject(new Error('Timeout: Token de Auth no encontrado.')), 45000);
+    });
+
+    // Promesa para robar el JSON de la Lista
+    const listPromise = new Promise<any>((resolve, reject) => {
       listPage.on('response', async (response) => {
         const url = response.url();
-        if (url.startsWith(API_TARGET_URL) && response.status() === 200) {
+        if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200) {
           try {
-            const contentType = response.headers()['content-type'] || '';
-            if (contentType.includes('application/json')) {
-              const json = await response.json();
-              clearTimeout(timeout);
-              resolve(json); // Resuelve con el JSON
-            }
-          } catch {
-            reject(new Error('Falló al parsear el JSON de la API interceptada'));
+            console.log('[Intercepción Response]: JSON de Lista capturado!');
+            const json = await response.json();
+            resolve(json);
+          } catch (e) {
+            reject(new Error('Falló al parsear el JSON de la API de lista'));
           }
         }
       });
+      setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 45000);
     });
 
-    // Construir y navegar a la página de lista
-    const dateTo = getTodayFormatted();
-    const dateFrom = get30DaysAgoFormatted();
+    // --- 2. Navegar y Obtener Datos de la Lista ---
     const listUrl = new URL(VISUAL_PAGE_URL);
-    listUrl.searchParams.append('date_from', dateFrom);
-    listUrl.searchParams.append('date_to', dateTo);
+    listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
+    listUrl.searchParams.append('date_to', getTodayFormatted());
     listUrl.searchParams.append('order_by', 'recent');
     listUrl.searchParams.append('page_number', page.toString());
     listUrl.searchParams.append('status', '2');
 
     console.log(`Navegando a la página visual: ${listUrl.toString()}`);
-    // Inicia navegación y espera a que el DOM cargue (más rápido)
     await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
 
-    const apiResponse = (await licitacionesPromise) as any;
-    const items = apiResponse?.payload?.resultados ?? [];
+    // Esperamos que ambas promesas se completen
+    const [apiResponse, capturedAuthToken] = await Promise.all([listPromise, tokenPromise]);
+    const items = (apiResponse as any)?.payload?.resultados ?? [];
 
     await listPage.close(); // Cerramos la página de lista
 
-    // --- 2. Iterar y Scrapear Detalles ---
+    // --- 3. Iterar y Obtener Detalles con Fetch ---
     const enrichedItems: any[] = [];
 
     for (const item of items) {
-      // ¡LA URL CORRECTA QUE DESCUBRISTE!
-      const urlFicha = `https://buscador.mercadopublico.cl/ficha?code=${item.codigo}`;
-      let detailPage: Page | null = null;
+      const detailUrl = `${API_DETAIL_URL}?action=ficha&code=${item.codigo}`;
 
       try {
-        detailPage = await browser.newPage();
-        await detailPage.setUserAgent(USER_AGENT);
-
-        console.log(`Navegando al detalle: ${urlFicha}`);
-        await detailPage.goto(urlFicha, { waitUntil: 'networkidle0', timeout: 45000 });
-
-        const detalles = await detailPage.evaluate(() => {
-          const getDetailValue = (keyText: string): string | null => {
-            const allRows = document.querySelectorAll('div.sc-iQLUmZ div.MuiGrid-container[class*="sc-kpQBza"]');
-            const row = Array.from(allRows).find(el => el.querySelector('p')?.textContent?.trim() === keyText);
-            const valueEl = row?.querySelector('div[class*="MuiGrid-grid-sm-8"] p') as HTMLElement | null;
-            return valueEl?.textContent?.trim() || null;
-          };
-
-          const getProducts = () => {
-            const productContainer = document.querySelector('form[class*="sc-gjcSds"]');
-            if (!productContainer) return [];
-            const productItems = productContainer.querySelectorAll('div[class*="sc-iKTcqh hdEFTf"]');
-            return Array.from(productItems).map(item => {
-              const name = (item.querySelector('p[class*="gcqPWt"]') as HTMLElement | null)?.textContent?.trim() || null;
-              const desc = (item.querySelector('p[class*="fQHKbh"]') as HTMLElement | null)?.textContent?.trim() || null;
-              const quantity = (item.querySelector('div[class*="bQhPOs"] p') as HTMLElement | null)?.textContent?.trim() || null;
-              return { name, desc, quantity };
-            });
-          };
-
-          const descripcion = getDetailValue('Descripción');
-          const plazo_entrega = getDetailValue('Plazo de entrega');
-          const direccion_entrega = getDetailValue('Dirección de entrega');
-          const productos = getProducts();
-          return { descripcion, plazo_entrega, direccion_entrega, productos };
+        console.log(`Haciendo Fetch a la API de detalle para: ${item.codigo}`);
+        const detailResponse = await fetch(detailUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Authorization': capturedAuthToken, // Token robado
+            'x-api-key': X_API_KEY, // Llave estática
+            'User-Agent': USER_AGENT,
+          },
         });
+
+        if (!detailResponse.ok) {
+          throw new Error(`API de detalle falló con status: ${detailResponse.status}`);
+        }
+
+        const detailJson = await detailResponse.json();
+
+        const detalles = {
+          descripcion: detailJson.payload?.descripcion ?? null,
+          plazo_entrega: detailJson.payload?.plazo_entrega ?? null,
+          direccion_entrega: detailJson.payload?.direccion_entrega ?? null,
+          productos: detailJson.payload?.productos_solicitados ?? [],
+        };
 
         enrichedItems.push({ ...item, ...detalles });
       } catch (e: any) {
-        console.warn(`Falló al scrapear detalle para ${item.codigo}: ${e.message}. Omitiendo.`);
+        console.warn(`--- [CANARY V17] Falló FETCH de detalle ${item.codigo}: ${e.message}. Omitiendo.`);
         enrichedItems.push(item); // Guardar solo los datos de la lista
-      } finally {
-        if (detailPage) {
-          await detailPage.close(); // Cierra la pestaña de detalle
-        }
       }
     }
 
     return enrichedItems; // Devuelve el array de items enriquecidos
   } catch (error: any) {
-    console.error('Error durante el scraping híbrido (V5):', error);
-    throw new Error(`Scraping híbrido V5 falló: ${error?.message || String(error)}`);
+    console.error('Error durante el scraping híbrido (V17):', error);
+    throw new Error(`Scraping híbrido V17 falló: ${error?.message || String(error)}`);
   } finally {
     if (browser) {
       await browser.close();
