@@ -96,6 +96,11 @@ export async function scrapeCompraAgil(): Promise<LicitacionExtraida[]> {
       await detailPage.setUserAgent(
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
       );
+
+      // Copia las cookies de la página de lista a la nueva pestaña
+      const cookies = await page!.cookies();
+      await detailPage.setCookie(...(cookies as any));
+
       await detailPage.goto(url);
       await detailPage.waitForSelector('h1[class*="dqvMeL"]');
 
