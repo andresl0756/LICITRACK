@@ -1,5 +1,5 @@
 import type { Database } from "../supabase/database.types";
-import { runHybridScraper } from "../api/scraper-service";
+import { runHybridScraper } from "../api/scraper-v3";
 
 type LicitacionExtraida = Partial<Database["public"]["Tables"]["licitaciones"]["Row"]> & {
   descripcion?: string | null;

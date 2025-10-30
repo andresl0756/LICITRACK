@@ -6,6 +6,7 @@ const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_TARGET_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
 
 export async function runHybridScraper(page: number = 1): Promise<unknown> {
+  console.log('--- [CANARY V9] EJECUTANDO SCRAPER V3 ---');
   console.log('--- [CANARY V3] EXECUTING runHybridScraper ---');
   let browser: Browser | null = null;
 
@@ -74,10 +75,10 @@ export async function runHybridScraper(page: number = 1): Promise<unknown> {
 
     console.log(`Navegando a la página visual: ${url.toString()}`);
 
-    await browserPage.goto(url.toString(), { waitUntil: 'networkidle2', timeout: 60000 });
-
-    const licitacionesData = await licitacionesPromise;
-    return licitacionesData;
+    // Inicia la navegación, pero no la espera
+    browserPage.goto(url.toString());
+    // Ahora esperamos a que la promesa de intercepción se resuelva
+    return await licitacionesPromise;
   } catch (error: any) {
     console.error('Error durante el scraping híbrido:', error);
     throw new Error(`Scraping híbrido falló: ${error?.message || String(error)}`);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runHybridScraper } from '../../../../../lib/api/scraper-service';
+import { runHybridScraper } from '../../../../../lib/api/scraper-v3';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
 
 // Añadido: tipo mínimo para la respuesta del scraper
