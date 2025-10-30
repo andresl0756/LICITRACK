@@ -22,7 +22,9 @@ export async function fetchLicitaciones(page: number = 1): Promise<unknown> {
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
-      // Usamos el mismo User-Agent que nos funcionó para evitar bloqueos
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "es-CL,es;q=0.9",
+      Referer: "https://buscador.mercadopublico.cl/",
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     },
