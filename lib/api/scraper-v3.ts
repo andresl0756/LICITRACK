@@ -138,6 +138,78 @@ async function probePublicDetail(code: string): Promise<boolean> {
   }
 }
 
+export async function scrapePublicListings(options: { page?: number } = {}): Promise<{ data: any[]; pageCount: number }> {
+  const { page = 1 } = options;
+  let browser: Browser | null = null;
+
+  try {
+    const executablePath = await chromium.executablePath();
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath,
+      headless: true,
+    });
+
+    const listPage = await browser.newPage();
+    await listPage.setUserAgent(USER_AGENT);
+
+    const listPromise: Promise<{ data: any[]; pageCount: number }> = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 45000);
+
+      listPage.on('response', async (response) => {
+        try {
+          const url = response.url();
+          // Aseguramos que la URL de la API de lista corresponde a la página solicitada
+          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && url.includes(`page=${page}`) && response.status() === 200) {
+            const json = await response.json();
+            clearTimeout(timeout);
+
+            const payload = (json as any)?.payload ?? json;
+            const resultados = Array.isArray(payload?.resultados) ? payload.resultados : [];
+
+            const pageCountRaw =
+              payload?.pageCount ??
+              payload?.totalPages ??
+              payload?.total_paginas ??
+              payload?.totalPagesCount ??
+              1;
+
+            const pageCount = Number(pageCountRaw) || 1;
+
+            resolve({ data: resultados, pageCount });
+          }
+        } catch {
+          // Dejar que el timeout maneje los errores de parseo/condición
+        }
+      });
+    });
+
+    // Navegar a la página visual con parámetros, incluyendo 'page'
+    const listUrl = new URL(VISUAL_PAGE_URL);
+    listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
+    listUrl.searchParams.append('date_to', getTodayFormatted());
+    listUrl.searchParams.append('order_by', 'recent');
+    listUrl.searchParams.append('page', String(page));
+    listUrl.searchParams.append('status', '2');
+
+    await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
+
+    const result = await listPromise;
+
+    await listPage.close();
+    await browser.close();
+    browser = null;
+
+    return result;
+  } catch (error: any) {
+    throw new Error(`Listado (página ${page}) falló: ${error?.message || String(error)}`);
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
 export async function runHybridScraper(page: number = 1): Promise<any[]> {
   console.log('--- [HYBRID MODE] Public-first; si falla, captura Authorization desde request de detalle y usa token + x-api-key ---');
   let browser: Browser | null = null;
