@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { scrapePublicListings } from '../../../../../lib/api/scraper-v4';
 import { supabaseAdmin } from '../../../../../lib/supabase/server';
+import { getAuthHeaders } from '../../../../../lib/api/mp-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,34 +31,53 @@ export async function GET(request: Request) {
   const startPage = lastProcessedPage + 1;
   console.log(`Cron sync-v3: Starting batch from page ${startPage}.`);
 
-  // 2. Ejecutar la primera página para obtener pageCount total
-  const firstPageResponse = await scrapePublicListings({ page: startPage });
-  const totalPageCount = Number(firstPageResponse.pageCount) || 1;
-  let allLicitacionesInBatch = firstPageResponse.data;
+  // PASO 1: Robar los tokens
+  console.log('[sync-v3] Obteniendo tokens de autenticación (Fase 1.16)...');
+  let authToken: string | undefined;
+  let apiKey: string | undefined;
+  try {
+    const authData = await getAuthHeaders();
+    authToken = authData.authToken;
+    apiKey = authData.apiKey;
+    if (!authToken || !apiKey) throw new Error('Tokens robados son nulos.');
+    console.log('[sync-v3] ¡Tokens obtenidos con éxito!');
+  } catch (authError: any) {
+    console.error('[sync-v3] ¡CRASH! No se pudieron obtener los tokens:', authError?.message || String(authError));
+    return NextResponse.json({ error: 'Fallo al obtener tokens' }, { status: 500 });
+  }
 
-  // 3. Calcular el rango del lote
+  // Ejecutar la primera página para obtener pageCount total (con tokens)
+  const firstPageResponse = await scrapePublicListings({ page: startPage, authToken, apiKey });
+  const totalPageCount = Number(firstPageResponse.pageCount) || 1;
+
+  // Calcular el rango del lote
   const endPage = Math.min(startPage + BATCH_SIZE - 1, totalPageCount);
   console.log(`Processing pages ${startPage} to ${endPage} (Total pages: ${totalPageCount}).`);
 
-  // 4. Ejecutar el resto del lote en paralelo (si hay más páginas en el lote)
-  if (endPage > startPage) {
-    const pagesToFetch = Array.from({ length: endPage - startPage }, (_, i) => i + startPage + 1);
-    const promises = pagesToFetch.map((page) => scrapePublicListings({ page }));
-    const results = await Promise.allSettled(promises);
+  // Construir las promesas del lote (incluye primera página como promesa resuelta para manejo uniforme)
+  const pagesToFetch = Array.from({ length: endPage - startPage + 1 }, (_, i) => i + startPage);
+  const promises = [
+    Promise.resolve(firstPageResponse),
+    ...pagesToFetch.slice(1).map((page) => scrapePublicListings({ page, authToken: authToken!, apiKey: apiKey! })),
+  ];
 
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        allLicitacionesInBatch = allLicitacionesInBatch.concat(result.value.data);
-      } else {
-        const reason: any = (result as any).reason;
-        console.error(`[sync-v3] Failed to fetch page ${pagesToFetch[index]}:`, reason?.message || reason || result);
-      }
-    });
-  }
+  // Ejecutar el lote en paralelo
+  console.log(`[sync-v3] Ejecutando lote ${startPage}-${endPage} en paralelo...`);
+  const results = await Promise.allSettled(promises);
+
+  let allLicitacionesInBatch: any[] = [];
+  results.forEach((result, idx) => {
+    if (result.status === 'fulfilled') {
+      allLicitacionesInBatch = allLicitacionesInBatch.concat(result.value.data);
+    } else {
+      const reason: any = (result as any).reason;
+      const page = idx === 0 ? startPage : pagesToFetch[idx];
+      console.error(`[sync-v3] Failed to fetch page ${page}:`, reason?.message || reason || result);
+    }
+  });
 
   console.log(`Batch fetched. Total items in batch: ${allLicitacionesInBatch.length}.`);
 
-  // 5. Mapear y hacer Upsert
   const licitacionesParaGuardar = allLicitacionesInBatch.map((item: any) => ({
     codigo: item.codigo,
     titulo: item.nombre,
@@ -83,7 +103,6 @@ export async function GET(request: Request) {
 
   console.log(`Batch upserted to Supabase.`);
 
-  // 6. Actualizar el estado para la próxima ejecución
   const newLastProcessedPage = endPage >= totalPageCount ? 0 : endPage;
 
   const { error: updateError } = await (supabaseAdmin as any)

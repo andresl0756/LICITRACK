@@ -140,8 +140,8 @@ async function probePublicDetail(code: string): Promise<boolean> {
   }
 }
 
-export async function scrapePublicListings(options: { page?: number } = {}): Promise<{ data: any[]; pageCount: number }> {
-  const { page: targetPage = 1 } = options;
+export async function scrapePublicListings(options: { page?: number; authToken: string; apiKey: string }): Promise<{ data: any[]; pageCount: number }> {
+  const { page: targetPage = 1, authToken, apiKey } = options;
   const dateFrom = get30DaysAgoFormatted();
   const dateTo = getTodayFormatted();
   const LIST_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -156,11 +156,10 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
   }
   const httpsAgent = new HttpsProxyAgent(proxyUrl);
 
-  // Headers con huella real de navegador (fingerprint)
+  // Headers con huella real de navegador + autenticación
   const headers = {
     Accept: 'application/json, text/plain, */*',
     'Accept-Language': 'es-CL,es;q=0.9,en;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
     Origin: 'https://buscador.mercadopublico.cl',
     Referer: 'https://buscador.mercadopublico.cl/',
     'User-Agent': LIST_USER_AGENT,
@@ -170,6 +169,9 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-site',
+    // Headers críticos de autenticación
+    authorization: authToken, // Ej: "Bearer ey..."
+    'x-api-key': apiKey,
   };
 
   try {
