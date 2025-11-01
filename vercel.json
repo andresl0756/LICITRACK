@@ -1,4 +1,9 @@
 {
   "buildCommand": "next build",
-  "ignoreCommand": "exit 1"
+  "ignoreCommand": "exit 1",
+  "functions": {
+    "app/api/cron/sync-v3/route.ts": {
+      "maxDuration": 300
+    }
+  }
 }
