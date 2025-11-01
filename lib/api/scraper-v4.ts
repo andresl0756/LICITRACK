@@ -2,6 +2,7 @@ import puppeteer, { type Browser } from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import axios from 'axios';
 
 const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
@@ -147,39 +148,37 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
 
   const url = `https://api.buscador.mercadopublico.cl/compra-agil?date_from=${dateFrom}&date_to=${dateTo}&order_by=recent&status=2&region=all&page_number=${targetPage}`;
 
-  // Configurar Proxy (si existe)
+  // Configurar Proxy (requerido)
   const proxyUrl = process.env.PROXY_URL;
-  const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+  if (!proxyUrl) {
+    console.error('[scraper-v4] Error: PROXY_URL no está configurada.');
+    throw new Error('PROXY_URL no está configurada.');
+  }
+  const httpsAgent = new HttpsProxyAgent(proxyUrl);
 
   try {
-    const response = await fetch(url, {
-      method: 'GET',
+    const response = await axios.get(url, {
       headers: {
         Accept: 'application/json, text/plain, */*',
         'User-Agent': LIST_USER_AGENT,
         Referer: 'https://buscador.mercadopublico.cl/',
       },
-      // Usar proxy residencial vía https-proxy-agent (compatible con undici)
-      dispatcher: agent,
+      httpsAgent,
+      timeout: 10000,
     });
 
-    if (!response.ok) {
+    if (response.status !== 200) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const json = await response.json();
-    const payload = (json as any)?.payload ?? json;
+    const jsonResponse = response.data;
+    const payload = (jsonResponse as any)?.payload ?? jsonResponse;
     const resultados = Array.isArray(payload?.resultados) ? payload.resultados : [];
-    const pageCountRaw =
-      payload?.pageCount ??
-      payload?.totalPages ??
-      payload?.total_paginas ??
-      payload?.totalPagesCount ??
-      1;
-    const pageCount = Number(pageCountRaw) || 1;
+    const pageCount = Number(payload?.pageCount ?? 0) || 0;
 
     return { data: resultados, pageCount };
   } catch (error: any) {
+    console.error(`[scraper-v4] Falló el fetch (axios) para página ${targetPage}:`, error?.message || String(error));
     throw new Error(`Listado (página ${targetPage}) falló: ${error?.message || String(error)}`);
   }
 }
