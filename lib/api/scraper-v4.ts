@@ -153,14 +153,22 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
     const listPage = await browser.newPage();
     await listPage.setUserAgent(USER_AGENT);
 
+    // Loguear la primera URL de API de lista capturada para diagnóstico
+    let firstListUrlLogged = false;
+
     const listPromise: Promise<{ data: any[]; pageCount: number }> = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 45000);
+      const timeout = setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 60000);
 
       listPage.on('response', async (response) => {
         try {
           const url = response.url();
-          // Aseguramos que la URL de la API de lista corresponde a la página solicitada
-          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && url.includes(`page=${page}`) && response.status() === 200) {
+          // Relajamos el predicado: aceptamos cualquier llamada de lista (con date_from) y status 200
+          // Esto evita depender de page= vs page_number= (o ausencia en página 1).
+          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200) {
+            if (!firstListUrlLogged) {
+              console.log(`[Lista] Interceptada URL de API: ${url}`);
+              firstListUrlLogged = true;
+            }
             const json = await response.json();
             clearTimeout(timeout);
 
@@ -179,17 +187,17 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
             resolve({ data: resultados, pageCount });
           }
         } catch {
-          // Dejar que el timeout maneje los errores de parseo/condición
+          // Dejar que el timeout maneje errores de parseo/condición
         }
       });
     });
 
-    // Navegar a la página visual con parámetros, incluyendo 'page'
+    // Navegar a la página visual con parámetros, usando page_number para alinear con el híbrido
     const listUrl = new URL(VISUAL_PAGE_URL);
     listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
     listUrl.searchParams.append('date_to', getTodayFormatted());
     listUrl.searchParams.append('order_by', 'recent');
-    listUrl.searchParams.append('page', String(page));
+    listUrl.searchParams.append('page_number', String(page));
     listUrl.searchParams.append('status', '2');
 
     await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
