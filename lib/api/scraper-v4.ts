@@ -156,14 +156,31 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
   }
   const httpsAgent = new HttpsProxyAgent(proxyUrl);
 
+  // Diagnóstico: Verificar IP saliente del proxy (Punto A)
+  try {
+    console.log('[scraper-v4] Verificando IP saliente del proxy...');
+    const ipTestResponse = await axios.get('https://api.ipify.org?format=json', {
+      httpsAgent,
+      timeout: 5000,
+    });
+    console.log(`[scraper-v4] ¡Éxito! IP saliente: ${ipTestResponse.data?.ip}`);
+  } catch (ipError: any) {
+    console.error('[scraper-v4] ¡FALLO! El proxy no pudo conectarse a ipify:', ipError?.message || String(ipError));
+  }
+
+  // Headers mejorados (Punto C)
+  const headers = {
+    Accept: 'application/json, text/plain, */*',
+    'User-Agent': LIST_USER_AGENT,
+    Referer: 'https://buscador.mercadopublico.cl/',
+    Origin: 'https://buscador.mercadopublico.cl',
+    'Accept-Language': 'es-CL,es;q=0.9',
+  };
+
   try {
     const response = await axios.get(url, {
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'User-Agent': LIST_USER_AGENT,
-        Referer: 'https://buscador.mercadopublico.cl/',
-      },
-      httpsAgent,
+      headers,
+      httpsAgent, // Confirmado: propiedad correcta en axios
       timeout: 10000,
     });
 
