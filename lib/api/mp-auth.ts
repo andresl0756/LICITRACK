@@ -128,7 +128,7 @@ export async function getAuthHeaders(timeoutMs: number = 45000): Promise<{ authT
             const authorization = headers['authorization'] || headers['Authorization'];
             const apiKey = headers['x-api-key'] || headers['X-API-KEY'];
             if (authorization) {
-              clearTimeout(timer);
+              // Importante: devolvemos el header 'authorization' completo (incluye 'Bearer ...')
               resolve({ authToken: authorization, apiKey });
             }
           }

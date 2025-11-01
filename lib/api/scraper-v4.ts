@@ -178,7 +178,8 @@ export async function scrapePublicListings(options: { page?: number; authToken: 
     const response = await axios.get(url, {
       headers,
       httpsAgent, // Confirmado: propiedad correcta en axios
-      timeout: 10000,
+      timeout: 60000,
+      maxRedirects: 5,
     });
 
     if (response.status !== 200) {

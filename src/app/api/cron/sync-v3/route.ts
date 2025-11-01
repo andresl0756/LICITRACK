@@ -6,7 +6,7 @@ import { getAuthHeaders } from '../../../../../lib/api/mp-auth';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 5;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
