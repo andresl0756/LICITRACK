@@ -5,7 +5,7 @@ import { supabaseAdmin } from '../../../../../lib/supabase/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 20;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -39,17 +39,20 @@ export async function GET(request: Request) {
   const endPage = Math.min(startPage + BATCH_SIZE - 1, totalPageCount);
   console.log(`Processing pages ${startPage} to ${endPage} (Total pages: ${totalPageCount}).`);
 
-  // 4. Ejecutar el resto del lote de forma secuencial (si hay más páginas en el lote)
+  // 4. Ejecutar el resto del lote en paralelo (si hay más páginas en el lote)
   if (endPage > startPage) {
-    for (let page = startPage + 1; page <= endPage; page++) {
-      try {
-        console.log(`[sync-v3] Fetching page ${page}...`);
-        const pageResponse = await scrapePublicListings({ page });
-        allLicitacionesInBatch = allLicitacionesInBatch.concat(pageResponse.data);
-      } catch (error) {
-        console.error(`[sync-v3] Failed to fetch page ${page}:`, (error as any)?.message || error);
+    const pagesToFetch = Array.from({ length: endPage - startPage }, (_, i) => i + startPage + 1);
+    const promises = pagesToFetch.map((page) => scrapePublicListings({ page }));
+    const results = await Promise.allSettled(promises);
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        allLicitacionesInBatch = allLicitacionesInBatch.concat(result.value.data);
+      } else {
+        const reason: any = (result as any).reason;
+        console.error(`[sync-v3] Failed to fetch page ${pagesToFetch[index]}:`, reason?.message || reason || result);
       }
-    }
+    });
   }
 
   console.log(`Batch fetched. Total items in batch: ${allLicitacionesInBatch.length}.`);

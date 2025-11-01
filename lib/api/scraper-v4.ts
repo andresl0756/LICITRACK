@@ -1,6 +1,7 @@
 import puppeteer, { type Browser } from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
+import { ProxyAgent } from 'undici';
 
 const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
@@ -144,39 +145,29 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
   const dateTo = getTodayFormatted();
   const LIST_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-  let browser: Browser | null = null;
+  const url = `https://api.buscador.mercadopublico.cl/compra-agil?date_from=${dateFrom}&date_to=${dateTo}&order_by=recent&status=2&region=all&page_number=${targetPage}`;
+
+  // Configurar Proxy (si existe)
+  const proxyUrl = process.env.PROXY_URL;
+  const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
+
   try {
-    const executablePath = await chromium.executablePath();
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath,
-      headless: true,
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'User-Agent': LIST_USER_AGENT,
+        Referer: 'https://buscador.mercadopublico.cl/',
+      },
+      // Usar proxy residencial via undici
+      dispatcher,
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent(LIST_USER_AGENT);
-
-    // Interceptor relajado: debe estar activo ANTES de navegar.
-    const responsePromise = page.waitForResponse(
-      (response) => {
-        const url = response.url();
-        return url.includes('api.buscador.mercadopublico.cl/compra-agil') && url.includes('date_from=');
-      },
-      { timeout: 60000 }
-    );
-
-    const urlPagina1 = `https://buscador.mercadopublico.cl/compra-agil?date_from=${dateFrom}&date_to=${dateTo}&order_by=recent&status=2&region=all&page_number=1`;
-    await page.goto(urlPagina1, { waitUntil: 'domcontentloaded' });
-
-    if (targetPage > 1) {
-      const selectorBoton = `button[aria-label="Go to page ${targetPage}"]`;
-      console.log(`[scraper-v4] Página > 1. Intentando click en selector: ${selectorBoton}`);
-      await page.waitForSelector(selectorBoton, { timeout: 10000 });
-      await page.click(selectorBoton);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
 
-    const interceptedResponse = await responsePromise;
-    const json = await interceptedResponse.json();
+    const json = await response.json();
     const payload = (json as any)?.payload ?? json;
     const resultados = Array.isArray(payload?.resultados) ? payload.resultados : [];
     const pageCountRaw =
@@ -187,17 +178,9 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
       1;
     const pageCount = Number(pageCountRaw) || 1;
 
-    await page.close();
-    await browser.close();
-    browser = null;
-
     return { data: resultados, pageCount };
   } catch (error: any) {
     throw new Error(`Listado (página ${targetPage}) falló: ${error?.message || String(error)}`);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 
