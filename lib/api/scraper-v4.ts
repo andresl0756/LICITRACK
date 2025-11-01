@@ -139,7 +139,7 @@ async function probePublicDetail(code: string): Promise<boolean> {
 }
 
 export async function scrapePublicListings(options: { page?: number } = {}): Promise<{ data: any[]; pageCount: number }> {
-  const { page = 1 } = options;
+  const { page: targetPage = 1 } = options;
   let browser: Browser | null = null;
 
   try {
@@ -162,9 +162,13 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
       listPage.on('response', async (response) => {
         try {
           const url = response.url();
-          // Relajamos el predicado: aceptamos cualquier llamada de lista (con date_from) y status 200
-          // Esto evita depender de page= vs page_number= (o ausencia en página 1).
-          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200) {
+          // Solo aceptar la respuesta que corresponde a la página solicitada.
+          const matchesRequestedPage =
+            targetPage === 1
+              ? (!url.includes('page_number=') || url.includes('page_number=1'))
+              : url.includes(`page_number=${encodeURIComponent(String(targetPage))}`);
+
+          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200 && matchesRequestedPage) {
             if (!firstListUrlLogged) {
               console.log(`[Lista] Interceptada URL de API: ${url}`);
               firstListUrlLogged = true;
@@ -197,7 +201,7 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
     listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
     listUrl.searchParams.append('date_to', getTodayFormatted());
     listUrl.searchParams.append('order_by', 'recent');
-    listUrl.searchParams.append('page_number', String(page));
+    listUrl.searchParams.append('page_number', String(targetPage));
     listUrl.searchParams.append('status', '2');
 
     await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
@@ -210,7 +214,7 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
 
     return result;
   } catch (error: any) {
-    throw new Error(`Listado (página ${page}) falló: ${error?.message || String(error)}`);
+    throw new Error(`Listado (página ${targetPage}) falló: ${error?.message || String(error)}`);
   } finally {
     if (browser) {
       await browser.close();
