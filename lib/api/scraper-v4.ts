@@ -140,80 +140,40 @@ async function probePublicDetail(code: string): Promise<boolean> {
 
 export async function scrapePublicListings(options: { page?: number } = {}): Promise<{ data: any[]; pageCount: number }> {
   const { page: targetPage = 1 } = options;
-  let browser: Browser | null = null;
+  const dateFrom = get30DaysAgoFormatted();
+  const dateTo = getTodayFormatted();
+  const LIST_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  const url = `https://api.buscador.mercadopublico.cl/compra-agil?date_from=${dateFrom}&date_to=${dateTo}&order_by=recent&status=2&region=all&page_number=${targetPage}`;
 
   try {
-    const executablePath = await chromium.executablePath();
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath,
-      headless: true,
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'User-Agent': LIST_USER_AGENT,
+        Referer: 'https://buscador.mercadopublico.cl/',
+      },
     });
 
-    const listPage = await browser.newPage();
-    await listPage.setUserAgent(USER_AGENT);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
 
-    // Loguear la primera URL de API de lista capturada para diagnóstico
-    let firstListUrlLogged = false;
+    const json = await response.json();
+    const payload = (json as any)?.payload ?? json;
+    const resultados = Array.isArray(payload?.resultados) ? payload.resultados : [];
+    const pageCountRaw =
+      payload?.pageCount ??
+      payload?.totalPages ??
+      payload?.total_paginas ??
+      payload?.totalPagesCount ??
+      1;
+    const pageCount = Number(pageCountRaw) || 1;
 
-    const listPromise: Promise<{ data: any[]; pageCount: number }> = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout: La API de lista nunca respondió.')), 60000);
-
-      listPage.on('response', async (response) => {
-        try {
-          const url = response.url();
-          // Predicado relajado: solo verificamos el path base y que incluya date_from.
-          if (url.includes('api.buscador.mercadopublico.cl/compra-agil') && url.includes('date_from=')) {
-            if (!firstListUrlLogged) {
-              console.log(`[Lista] Interceptada URL de API: ${url}`);
-              firstListUrlLogged = true;
-            }
-            const json = await response.json();
-            clearTimeout(timeout);
-
-            const payload = (json as any)?.payload ?? json;
-            const resultados = Array.isArray(payload?.resultados) ? payload.resultados : [];
-
-            const pageCountRaw =
-              payload?.pageCount ??
-              payload?.totalPages ??
-              payload?.total_paginas ??
-              payload?.totalPagesCount ??
-              1;
-
-            const pageCount = Number(pageCountRaw) || 1;
-
-            resolve({ data: resultados, pageCount });
-          }
-        } catch {
-          // Dejar que el timeout maneje errores de parseo/condición
-        }
-      });
-    });
-
-    // Navegar a la página visual con parámetros, usando page_number para alinear con el híbrido
-    const listUrl = new URL(VISUAL_PAGE_URL);
-    listUrl.searchParams.append('date_from', get30DaysAgoFormatted());
-    listUrl.searchParams.append('date_to', getTodayFormatted());
-    listUrl.searchParams.append('order_by', 'recent');
-    listUrl.searchParams.append('page_number', String(targetPage));
-    listUrl.searchParams.append('status', '2');
-
-    await listPage.goto(listUrl.toString(), { waitUntil: 'domcontentloaded' });
-
-    const result = await listPromise;
-
-    await listPage.close();
-    await browser.close();
-    browser = null;
-
-    return result;
+    return { data: resultados, pageCount };
   } catch (error: any) {
     throw new Error(`Listado (página ${targetPage}) falló: ${error?.message || String(error)}`);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 
