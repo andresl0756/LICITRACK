@@ -169,10 +169,9 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
     await page.goto(urlPagina1, { waitUntil: 'domcontentloaded' });
 
     if (targetPage > 1) {
-      const selectorBoton = `a.page-link[aria-label="page ${targetPage}"]`;
+      const selectorBoton = `button[aria-label="Go to page ${targetPage}"]`;
       console.log(`[scraper-v4] Página > 1. Intentando click en selector: ${selectorBoton}`);
       await page.waitForSelector(selectorBoton, { timeout: 10000 });
-      // El interceptor ya está escuchando; el click disparará la captura.
       await page.click(selectorBoton);
     }
 
