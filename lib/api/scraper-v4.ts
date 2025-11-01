@@ -162,13 +162,8 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
       listPage.on('response', async (response) => {
         try {
           const url = response.url();
-          // Solo aceptar la respuesta que corresponde a la página solicitada.
-          const matchesRequestedPage =
-            targetPage === 1
-              ? (!url.includes('page_number=') || url.includes('page_number=1'))
-              : url.includes(`page_number=${encodeURIComponent(String(targetPage))}`);
-
-          if (url.startsWith(API_LIST_URL) && url.includes('date_from') && response.status() === 200 && matchesRequestedPage) {
+          // Predicado relajado: solo verificamos el path base y que incluya date_from.
+          if (url.includes('api.buscador.mercadopublico.cl/compra-agil') && url.includes('date_from=')) {
             if (!firstListUrlLogged) {
               console.log(`[Lista] Interceptada URL de API: ${url}`);
               firstListUrlLogged = true;
