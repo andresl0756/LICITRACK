@@ -156,25 +156,20 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
   }
   const httpsAgent = new HttpsProxyAgent(proxyUrl);
 
-  // Diagnóstico: Verificar IP saliente del proxy (Punto A)
-  try {
-    console.log('[scraper-v4] Verificando IP saliente del proxy...');
-    const ipTestResponse = await axios.get('https://api.ipify.org?format=json', {
-      httpsAgent,
-      timeout: 5000,
-    });
-    console.log(`[scraper-v4] ¡Éxito! IP saliente: ${ipTestResponse.data?.ip}`);
-  } catch (ipError: any) {
-    console.error('[scraper-v4] ¡FALLO! El proxy no pudo conectarse a ipify:', ipError?.message || String(ipError));
-  }
-
-  // Headers mejorados (Punto C)
+  // Headers con huella real de navegador (fingerprint)
   const headers = {
     Accept: 'application/json, text/plain, */*',
-    'User-Agent': LIST_USER_AGENT,
-    Referer: 'https://buscador.mercadopublico.cl/',
+    'Accept-Language': 'es-CL,es;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
     Origin: 'https://buscador.mercadopublico.cl',
-    'Accept-Language': 'es-CL,es;q=0.9',
+    Referer: 'https://buscador.mercadopublico.cl/',
+    'User-Agent': LIST_USER_AGENT,
+    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"macOS"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
   };
 
   try {
