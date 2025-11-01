@@ -1,7 +1,7 @@
 import puppeteer, { type Browser } from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { getTodayFormatted, get30DaysAgoFormatted } from '../utils/dates';
-import { ProxyAgent } from 'undici';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const VISUAL_PAGE_URL = 'https://buscador.mercadopublico.cl/compra-agil';
 const API_LIST_URL = 'https://api.buscador.mercadopublico.cl/compra-agil';
@@ -149,7 +149,7 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
 
   // Configurar Proxy (si existe)
   const proxyUrl = process.env.PROXY_URL;
-  const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
+  const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
 
   try {
     const response = await fetch(url, {
@@ -159,8 +159,8 @@ export async function scrapePublicListings(options: { page?: number } = {}): Pro
         'User-Agent': LIST_USER_AGENT,
         Referer: 'https://buscador.mercadopublico.cl/',
       },
-      // Usar proxy residencial via undici
-      dispatcher,
+      // Usar proxy residencial vía https-proxy-agent (compatible con undici)
+      dispatcher: agent,
     });
 
     if (!response.ok) {
